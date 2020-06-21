@@ -33,6 +33,7 @@
 #include "decals.h"
 #include "soundent.h"
 #include "gamerules.h"
+#include "player.h"
 
 #define MONSTER_CUT_CORNER_DIST		8 // 8 means the monster's bounding box is contained without the box of the node in WC
 
@@ -42,6 +43,8 @@ Vector VecBModelOrigin( entvars_t* pevBModel );
 extern DLL_GLOBAL	BOOL	g_fDrawLines;
 extern DLL_GLOBAL	short	g_sModelIndexLaser;// holds the index for the laser beam
 extern DLL_GLOBAL	short	g_sModelIndexLaserDot;// holds the index for the laser beam dot
+
+extern "C" char PM_FindTextureType( char *name );
 
 extern CGraph WorldGraph;// the world node graph
 
@@ -1250,7 +1253,8 @@ void CBaseMonster :: SetActivity ( Activity NewActivity )
 	else
 	{
 		// Not available try to get default anim
-		ALERT ( at_debug, "%s has no sequence for act:%d\n", STRING(pev->classname), NewActivity );
+		// ZAEBALO!!!!!
+		ALERT ( at_aiconsole, "%s has no sequence for act:%d\n", STRING(pev->classname), NewActivity );
 		pev->sequence		= 0;	// Set to the reset anim (if it's there)
 	}
 
@@ -2129,7 +2133,7 @@ void CBaseMonster :: StartMonster ( void )
 		//LRC- there are perfectly good reasons for making a monster stuck, so it shouldn't always be an error.
 		if (!WALK_MOVE ( ENT(pev), 0, 0, WALKMOVE_NORMAL ) && !FBitSet( pev->spawnflags, SF_MONSTER_NO_YELLOW_BLOBS))
 		{
-			ALERT(at_debug, "%s \"%s\" stuck in wall--level design error", STRING(pev->classname), STRING(pev->targetname));
+			ALERT(at_debug, "%s \"%s\" stuck in wall--level design error\n", STRING(pev->classname), STRING(pev->targetname));
 			pev->effects = EF_BRIGHTFIELD;
 		}
 	}
@@ -2633,6 +2637,115 @@ void CBaseMonster :: SetEyePosition ( void )
 	}
 }
 
+//=========================================================
+// StepSound
+//
+// Play step sounds with material type
+//=========================================================
+
+void CBaseMonster :: StepSound( void )
+{ 
+	char chTextureType;
+	float fvol;
+	char szbuffer[64];
+	char *rgsz[4];
+	const char *pTextureName;
+	TraceResult ptr;
+	float fattn = ATTN_NORM;
+	int fWalking;
+	int cnt;
+
+	UTIL_TraceLine( pev->origin + Vector( 0, 0, 8 ), pev->origin - Vector( 0, 0, 16 ), ignore_monsters, ENT( pev ), &ptr );
+	CBaseEntity *pEntity = CBaseEntity::Instance(ptr.pHit);
+
+	pTextureName = NULL;// assume invalid
+	chTextureType = 0;	// defaulting to NPC step sounds
+
+	if ( pEntity )
+		pTextureName = TRACE_TEXTURE( ENT( pEntity->pev ), pev->origin + Vector( 0, 0, 8 ), pev->origin - Vector( 0, 0, 16 ));
+
+	if( pTextureName )
+	{
+		// strip leading '-0' or '+0~' or '{' or '!' 
+		if ( *pTextureName == '-' || *pTextureName == '+' )
+			pTextureName += 2;
+
+		if ( *pTextureName == '{' || *pTextureName == '!' || *pTextureName == '~' || *pTextureName == ' ' )
+			pTextureName++;
+		// '}}' 
+		strcpy( szbuffer, pTextureName );
+		szbuffer[CBTEXTURENAMEMAX - 1] = 0;
+
+		// get texture type 
+		chTextureType = PM_FindTextureType( szbuffer );
+	}
+
+	if ( m_Activity == ACT_WALK )
+		fWalking = true;
+	else fWalking = false;	
+
+	switch( chTextureType )
+	{
+	case CHAR_TEX_CONCRETE:
+		fvol = fWalking ? 0.2 : 0.5;
+		rgsz[0] = "player/pl_step1.wav";
+		rgsz[1] = "player/pl_step2.wav";
+		cnt = 2;
+		break;
+	case CHAR_TEX_METAL:
+		fvol = fWalking ? 0.2 : 0.5;
+		rgsz[0] = "player/pl_metal1.wav";
+		rgsz[1] = "player/pl_metal2.wav";
+		cnt = 2;
+		break;
+	case CHAR_TEX_DIRT:
+		fvol = fWalking ? 0.25 : 0.55;
+		rgsz[0] = "player/pl_dirt1.wav";
+		rgsz[1] = "player/pl_dirt2.wav";
+		rgsz[2] = "player/pl_dirt3.wav";
+		cnt = 3;
+		break;
+	case CHAR_TEX_VENT:
+		fvol = fWalking ? 0.4 : 0.7;
+		rgsz[0] = "player/pl_duct1.wav";
+		rgsz[1] = "player/pl_duct2.wav";
+		cnt = 2;
+		break;
+	case CHAR_TEX_GRATE:
+		fvol = fWalking ? 0.2 : 0.5;
+		rgsz[0] = "player/pl_grate1.wav";
+		rgsz[1] = "player/pl_grate4.wav";
+		cnt = 2;
+		break;
+	case CHAR_TEX_TILE:
+		fvol = fWalking ? 0.2 : 0.5;
+		rgsz[0] = "player/pl_tile1.wav";
+		rgsz[1] = "player/pl_tile3.wav";
+		rgsz[2] = "player/pl_tile2.wav";
+		rgsz[3] = "player/pl_tile4.wav";
+		cnt = 4;
+		break;
+	case CHAR_TEX_SLOSH:
+		fvol = fWalking ? 0.2 : 0.5;
+		rgsz[0] = "player/pl_slosh1.wav";
+		rgsz[1] = "player/pl_slosh3.wav";
+		rgsz[2] = "player/pl_slosh2.wav";
+		rgsz[3] = "player/pl_slosh4.wav";
+		cnt = 4;
+		break;
+	default:	// default NPC sounds
+		fvol = fWalking ? 0.2 : 0.5;
+		rgsz[0] = "common/npc_step1.wav";
+		rgsz[1] = "common/npc_step2.wav";
+		rgsz[0] = "common/npc_step3.wav";
+		rgsz[1] = "common/npc_step4.wav";
+		cnt = 4;
+		break;
+	}
+
+	EMIT_SOUND_DYN( ENT( pev ), CHAN_BODY, rgsz[RANDOM_LONG(0, cnt-1)], fvol, fattn, 0, 96 + RANDOM_LONG( 0, 0xf ));
+}
+
 void CBaseMonster :: HandleAnimEvent( MonsterEvent_t *pEvent )
 {
 	switch( pEvent->event )
@@ -2663,7 +2776,10 @@ void CBaseMonster :: HandleAnimEvent( MonsterEvent_t *pEvent )
 
 	case SCRIPT_EVENT_SOUND:			// Play a named wave file
 		if ( !(pev->spawnflags & SF_MONSTER_GAG) || m_MonsterState != MONSTERSTATE_IDLE)
-			EMIT_SOUND( edict(), CHAN_BODY, pEvent->options, 1.0, ATTN_IDLE );
+		{
+			if( !strnicmp( pEvent->options, "common/npc_step", 15 )) StepSound();
+			else EMIT_SOUND( edict(), CHAN_BODY, pEvent->options, 1.0, ATTN_IDLE );
+		}
 		break;
 
 	case SCRIPT_EVENT_SOUND_VOICE:
@@ -2673,6 +2789,7 @@ void CBaseMonster :: HandleAnimEvent( MonsterEvent_t *pEvent )
 
 	case SCRIPT_EVENT_SENTENCE_RND1:		// Play a named sentence group 33% of the time
 		if (RANDOM_LONG(0,2) == 0)
+			break;
 		// fall through...
 	case SCRIPT_EVENT_SENTENCE:			// Play a named sentence group
 		SENTENCEG_PlayRndSz( edict(), pEvent->options, 1.0, ATTN_IDLE, 0, 100 );
@@ -3251,7 +3368,6 @@ Vector CBaseMonster :: ShootAtEnemy( const Vector &shootOrigin )
 	}
 	else return gpGlobals->v_forward;
 }
-
 
 
 //=========================================================

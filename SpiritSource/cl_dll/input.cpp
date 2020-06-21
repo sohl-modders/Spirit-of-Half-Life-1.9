@@ -124,9 +124,6 @@ kbutton_t	in_alt1;
 kbutton_t	in_score;
 kbutton_t	in_break;
 kbutton_t	in_graph;  // Display the netgraph
-kbutton_t	in_customhud;	//AJH custom hud
-kbutton_t	in_briefing;	//AJH show map briefing
-
 
 typedef struct kblist_s
 {
@@ -536,43 +533,7 @@ void IN_ScoreUp(void)
 		gViewPort->HideScoreBoard();
 	}
 }
-void IN_HUDDown(void)	//AJH
-{
-	KeyDown(&in_customhud);
-	if ( gViewPort )
-	{
-		//gViewPort->ShowVGUIMenu(MENU_CUSTOM);
-		gViewPort->ShowCommandMenu( gViewPort->m_StandardMenu );
-	}
-}
 
-void IN_HUDUp(void)	//AJH
-{
-	KeyUp(&in_customhud);
-	if ( gViewPort )
-	{
-		//gViewPort->HideVGUIMenu();
-		gViewPort->HideCommandMenu();
-	}
-}
-
-void IN_BriefingDown(void)	//AJH
-{
-	KeyDown(&in_briefing);
-	if ( gViewPort )
-	{
-		gViewPort->ShowVGUIMenu(MENU_MAPBRIEFING);
-	}
-}
-
-void IN_BriefingUp(void)	//AJH
-{
-	KeyUp(&in_briefing);
-	if ( gViewPort )
-	{
-		gViewPort->HideVGUIMenu();
-	}
-}
 void IN_MLookUp (void)
 {
 	KeyUp( &in_mlook );
@@ -693,6 +654,18 @@ void CL_AdjustAngles ( float frametime, float *viewangles )
 }
 
 /*
+============
+CL_IsDead
+
+Returns 1 if health is <= 0
+============
+*/
+int	CL_IsDead( void )
+{
+	return ( gHUD.m_Health.m_iHealth <= 0 ) ? 1 : 0;
+}
+
+/*
 ================
 CL_CreateMove
 
@@ -762,7 +735,7 @@ void DLLEXPORT CL_CreateMove ( float frametime, struct usercmd_s *cmd, int activ
 		}
 
 		// Allow mice and other controllers to add their inputs
-		IN_Move ( frametime, cmd );
+		if(!CL_IsDead())IN_Move ( frametime, cmd );
 	}
 
 	cmd->impulse = in_impulse;
@@ -805,18 +778,6 @@ void DLLEXPORT CL_CreateMove ( float frametime, struct usercmd_s *cmd, int activ
 		VectorCopy( oldangles, cmd->viewangles );
 	}
 
-}
-
-/*
-============
-CL_IsDead
-
-Returns 1 if health is <= 0
-============
-*/
-int	CL_IsDead( void )
-{
-	return ( gHUD.m_Health.m_iHealth <= 0 ) ? 1 : 0;
 }
 
 /*
@@ -1015,10 +976,6 @@ void InitInput (void)
 	gEngfuncs.pfnAddCommand ("-score", IN_ScoreUp);
 	gEngfuncs.pfnAddCommand ("+showscores", IN_ScoreDown);
 	gEngfuncs.pfnAddCommand ("-showscores", IN_ScoreUp);
-	gEngfuncs.pfnAddCommand ("-hud", IN_HUDUp);		//AJH
-	gEngfuncs.pfnAddCommand ("+hud", IN_HUDDown);	//AJH
-	gEngfuncs.pfnAddCommand ("-briefing", IN_BriefingUp);		//AJH
-	gEngfuncs.pfnAddCommand ("+briefing", IN_BriefingDown);		//AJH
 	gEngfuncs.pfnAddCommand ("+graph", IN_GraphDown);
 	gEngfuncs.pfnAddCommand ("-graph", IN_GraphUp);
 	gEngfuncs.pfnAddCommand ("+break",IN_BreakDown);

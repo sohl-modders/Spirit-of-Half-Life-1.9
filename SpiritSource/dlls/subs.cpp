@@ -14,9 +14,6 @@
 ****/
 /*
 
-  Last Modifed 4 May 2004 By Andrew Hamilton (AJH)
-  :- Added support for acceleration of doors etc
-
 ===== subs.cpp ========================================================
 
   frequently used global functions
@@ -31,9 +28,6 @@
 #include "doors.h"
 #include "movewith.h"
 #include "player.h"
-#include "locus.h"
-
-#define ACCELTIMEINCREMENT 0.1 //AJH for acceleration/deceleration time steps
 
 extern CGraph WorldGraph;
 
@@ -76,6 +70,7 @@ private:
 LINK_ENTITY_TO_CLASS(info_player_deathmatch,CBaseDMStart);
 LINK_ENTITY_TO_CLASS(info_player_start,CPointEntity);
 LINK_ENTITY_TO_CLASS(info_landmark,CPointEntity);
+LINK_ENTITY_TO_CLASS(info_proxy,CPointEntity);	// g-cont. locus proxy
 
 void CBaseDMStart::KeyValue( KeyValueData *pkvd )
 {
@@ -100,67 +95,8 @@ STATE CBaseDMStart::GetState( CBaseEntity *pEntity )
 void CBaseEntity::UpdateOnRemove( void )
 {
 	int	i;
-	CBaseEntity* pTemp;
 
-	if (!g_pWorld)
-	{
-		ALERT(at_debug, "UpdateOnRemove has no AssistList!\n");
-		return;
-	}
-
-	//LRC - remove this from the AssistList.
-	for (pTemp = g_pWorld; pTemp->m_pAssistLink != NULL; pTemp = pTemp->m_pAssistLink)
-	{
-		if (this == pTemp->m_pAssistLink)
-		{
-//			ALERT(at_console,"REMOVE: %s removed from the Assist List.\n", STRING(pev->classname));
-			pTemp->m_pAssistLink = this->m_pAssistLink;
-			this->m_pAssistLink = NULL;
-			break;
-		}
-	}
-
-	//LRC
-	if (m_pMoveWith)
-	{
-		// if I'm moving with another entity, take me out of the list. (otherwise things crash!)
-		pTemp = m_pMoveWith->m_pChildMoveWith;
-		if (pTemp == this)
-		{
-			m_pMoveWith->m_pChildMoveWith = this->m_pSiblingMoveWith;
-		}
-		else
-		{
-			while (pTemp->m_pSiblingMoveWith)
-			{
-				if (pTemp->m_pSiblingMoveWith == this)
-				{
-					pTemp->m_pSiblingMoveWith = this->m_pSiblingMoveWith;
-					break;
-				}
-				pTemp = pTemp->m_pSiblingMoveWith;
-			}
-
-		}
-//		ALERT(at_console,"REMOVE: %s removed from the %s ChildMoveWith list.\n", STRING(pev->classname), STRING(m_pMoveWith->pev->targetname));
-	}
-
-	//LRC - do the same thing if another entity is moving with _me_.
-	if (m_pChildMoveWith)
-	{
-		CBaseEntity* pCur = m_pChildMoveWith;
-		CBaseEntity* pNext;
-		while (pCur != NULL)
-		{
-			pNext = pCur->m_pSiblingMoveWith;
-			// bring children to a stop
-			UTIL_SetMoveWithVelocity(pCur, g_vecZero, 100);
-			UTIL_SetMoveWithAvelocity(pCur, g_vecZero, 100);
-			pCur->m_pMoveWith = NULL;
-			pCur->m_pSiblingMoveWith = NULL;
-			pCur = pNext;
-		}
-	}
+	ResetParent();
 
 	if ( FBitSet( pev->flags, FL_GRAPHED ) )
 	{
@@ -259,6 +195,17 @@ void CBaseEntity :: SUB_UseTargets( CBaseEntity *pActivator, USE_TYPE useType, f
 	}
 }
 
+//========================================================================
+// FireTargets - supported prefix "+", "-", "!", ">", "<", "?".
+// supported also this and self pointers - e.g. "fadein(mywall)"
+//========================================================================
+void FireTargets( string_t targetName, CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	//overload version UTIL_FireTargets
+	if (!targetName) return;//no execute code, if target blank
+	
+	FireTargets( STRING(targetName), pActivator, pCaller, useType, value);
+}
 
 void FireTargets( const char *targetName, CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
 {
@@ -268,12 +215,8 @@ void FireTargets( const char *targetName, CBaseEntity *pActivator, CBaseEntity *
 	int i,j, found = false;
 	char szBuf[80];
 
-	if ( !targetName )
-		return;
-	if (useType == USE_NOT)
-		return;
+	if ( !targetName ) return;
 
-	//LRC - allow changing of usetype
 	if (targetName[0] == '+')
 	{
 		targetName++;
@@ -284,82 +227,80 @@ void FireTargets( const char *targetName, CBaseEntity *pActivator, CBaseEntity *
 		targetName++;
 		useType = USE_OFF;
 	}
-	else if (targetName[0] == '!')	//G-cont
+ 	else if (targetName[0] == '<')
+	{
+		targetName++;
+		useType = USE_SET;
+	}
+	else if (targetName[0] == '!')
 	{
 		targetName++;
 		useType = USE_KILL;
 	}
-	else if (targetName[0] == '>')  //G-cont
-	{
-		targetName++;
-		useType = USE_SAME;
-	}
-	
-	else if (targetName[0] == '&')	//AJH Use_Spawn
-	{
-		targetName++;
-		useType = USE_SPAWN;
-	}
-
-	ALERT( at_aiconsole, "Firing: (%s)\n", targetName );
 
 	pTarget = UTIL_FindEntityByTargetname(pTarget, targetName, pActivator);
-	if( !pTarget )
+
+	if( !pTarget )//smart field name ?
 	{
-		// it's not an entity name; check for a locus specifier, e.g: "fadein(mywall)"
+		//try to extract value from name (it's more usefully than "locus" specifier)
 		for (i = 0; targetName[i]; i++)
 		{
-			if (targetName[i] == '(')
+			if (targetName[i] == '.')//value specifier
 			{
-				i++;
-				for (j = i; targetName[j]; j++)
-				{
-					if (targetName[j] == ')')
-					{
-						strncpy(szBuf, targetName+i, j-i);
-						szBuf[j-i] = 0;
-						pActivator = CalcLocusParameter(inputActivator, szBuf);
-//						pActivator = UTIL_FindEntityByTargetname(NULL, szBuf, inputActivator);
-						if (!pActivator)
-						{
-							//ALERT(at_console, "Missing activator \"%s\"\n", szBuf);
-							return; // it's a locus specifier, but the locus is invalid.
-						}
-						//ALERT(at_console, "Found activator \"%s\"\n", STRING(pActivator->pev->targetname));
-						found = true;
-			break;
-					}
-				}
-				if (!found) ALERT(at_error, "Missing ')' in target value \"%s\"", inputTargetName);
+				value = atof(&targetName[i+1]);
+				sprintf(szBuf, targetName);
+				szBuf[i] = 0;
+				targetName = szBuf;
+				pTarget = UTIL_FindEntityByTargetname(NULL, targetName, inputActivator);						
 				break;
 			}
 		}
-		if (!found) return; // no, it's not a locus specifier.
 
-		strncpy(szBuf, targetName, i-1);
-		szBuf[i-1] = 0;
-		targetName = szBuf;
-		pTarget = UTIL_FindEntityByTargetname(NULL, targetName, inputActivator);
+		if( !pTarget )//try to extract activator specified
+		{
+			for (i = 0; targetName[i]; i++)
+			{
+				if (targetName[i] == '(')
+				{
+					i++;
+					for (j = i; targetName[j]; j++)
+					{
+						if (targetName[j] == ')')
+						{
+							strncpy(szBuf, targetName+i, j-i);
+							szBuf[j-i] = 0;
+							pActivator = UTIL_FindEntityByTargetname(NULL, szBuf, inputActivator);
+							if (!pActivator) return; //it's a locus specifier, but the locus is invalid.
+							found = true;
+							break;
+						}
+					}
+					if (!found) ALERT(at_error, "Missing ')' in targetname: %s", inputTargetName);
+					break;
+				}
+			}
+	         		if (!found) return; // no, it's not a locus specifier.
 
-		if (!pTarget) return; // it's a locus specifier all right, but the target's invalid.
+			strncpy(szBuf, targetName, i-1);
+			szBuf[i-1] = 0;
+			targetName = szBuf;
+			pTarget = UTIL_FindEntityByTargetname(NULL, targetName, inputActivator);
+
+			if (!pTarget)return; // it's a locus specifier all right, but the target's invalid.
+		}
 	}
-
+          
+          ALERT( at_aiconsole, "Firing: (%s) with %s and value %g\n", targetName, GetStringForUseType( useType ), value );
+	
 	do // start firing targets
 	{
 		if ( !(pTarget->pev->flags & FL_KILLME) )	// Don't use dying ents
 		{
-			if (useType == USE_KILL)
-			{
-				ALERT( at_aiconsole, "Use_kill on %s\n", STRING( pTarget->pev->classname ) );
-				UTIL_Remove( pTarget );
-			}
-			else
-		{
-			ALERT( at_aiconsole, "Found: %s, firing (%s)\n", STRING(pTarget->pev->classname), targetName );
-			pTarget->Use( pActivator, pCaller, useType, value );
+			if (useType == USE_KILL) UTIL_Remove( pTarget );
+			else pTarget->Use( pActivator, pCaller, useType, value );
 		}
-	}
 		pTarget = UTIL_FindEntityByTargetname(pTarget, targetName, inputActivator);
+
 	} while (pTarget);
 
 	//LRC- Firing has finished, aliases can now reflect their new values.
@@ -442,10 +383,10 @@ void SetMovedir( entvars_t *pev )
 {
 	pev->movedir = GetMovedir(pev->angles);
 	pev->angles = g_vecZero;
-	}
+}
 
 Vector GetMovedir( Vector vecAngles )
-	{
+{
 	if (vecAngles == Vector(0, -1, 0))
 	{
 		return Vector(0, 0, 1);
@@ -490,6 +431,7 @@ TYPEDESCRIPTION	CBaseToggle::m_SaveData[] =
 	DEFINE_FIELD( CBaseToggle, m_vecAngle2, FIELD_VECTOR ),		// UNDONE: Position could go through transition, but also angle?
 	DEFINE_FIELD( CBaseToggle, m_cTriggersLeft, FIELD_INTEGER ),
 	DEFINE_FIELD( CBaseToggle, m_flHeight, FIELD_FLOAT ),
+	DEFINE_FIELD( CBaseToggle, m_flWidth, FIELD_FLOAT ),
 //	DEFINE_FIELD( CBaseToggle, m_hActivator, FIELD_EHANDLE ),
 	DEFINE_FIELD( CBaseToggle, m_pfnCallWhenMoveDone, FIELD_FUNCTION ),
 	DEFINE_FIELD( CBaseToggle, m_vecFinalDest, FIELD_POSITION_VECTOR ),
@@ -498,14 +440,6 @@ TYPEDESCRIPTION	CBaseToggle::m_SaveData[] =
 	DEFINE_FIELD( CBaseToggle, m_vecFinalAngle, FIELD_VECTOR ),
 	DEFINE_FIELD( CBaseToggle, m_sMaster, FIELD_STRING),
 	DEFINE_FIELD( CBaseToggle, m_bitsDamageInflict, FIELD_INTEGER ),	// damage type inflicted
-
-	DEFINE_FIELD( CBaseToggle, m_flLinearAccel, FIELD_FLOAT),	//
-	DEFINE_FIELD( CBaseToggle, m_flLinearDecel, FIELD_FLOAT),	//
-	DEFINE_FIELD( CBaseToggle, m_flAccelTime,   FIELD_FLOAT),	// AJH Needed for acceleration/deceleration
-	DEFINE_FIELD( CBaseToggle, m_flDecelTime,   FIELD_FLOAT),	//	
-	DEFINE_FIELD( CBaseToggle, m_flCurrentTime, FIELD_FLOAT),	//
-	DEFINE_FIELD( CBaseToggle, m_bDecelerate,   FIELD_BOOLEAN),	//
-
 };
 IMPLEMENT_SAVERESTORE( CBaseToggle, CBaseAnimating );
 
@@ -558,8 +492,6 @@ void CBaseToggle ::  LinearMove( Vector	vecInput, float flSpeed )//, BOOL bNow )
 	
 	m_flLinearMoveSpeed = flSpeed;
 	m_vecFinalDest = vecInput;
-	m_flLinearAccel = -1.0;		// AJH Not using Acceleration
-	m_flLinearDecel = -1.0; 	//
 
 //	if ((m_pMoveWith || m_pChildMoveWith))// && !bNow)
 //	{
@@ -574,47 +506,7 @@ void CBaseToggle ::  LinearMove( Vector	vecInput, float flSpeed )//, BOOL bNow )
 //	}
 }
 
-void CBaseToggle ::  LinearMove( Vector	vecInput, float flSpeed, float flAccel, float flDecel )//, BOOL bNow )  // AJH Call this to use acceleration
-{
-//	ALERT(at_console, "LMove %s: %f %f %f, speed %f, accel %f \n", STRING(pev->targetname), vecInput.x, vecInput.y, vecInput.z, flSpeed, flAccel);
-	ASSERTSZ(flSpeed != 0, "LinearMove:  no speed is defined!");
-//	ASSERTSZ(m_pfnCallWhenMoveDone != NULL, "LinearMove: no post-move function defined");
-
-	m_flLinearMoveSpeed = flSpeed;
-
-	m_flLinearAccel = flAccel;
-	m_flLinearDecel = flDecel;
-	m_flCurrentTime = 0;
-	
-	if(m_flLinearAccel>0){
-		m_flAccelTime = m_flLinearMoveSpeed/m_flLinearAccel;
-	}else{
-		m_flLinearAccel=-1;
-		m_flAccelTime=0;
-	}
-	if(m_flLinearDecel>0){
-	m_flDecelTime = m_flLinearMoveSpeed/m_flLinearDecel;
-	}else{
-		m_flLinearDecel=-1;
-		m_flDecelTime=0;
-	}
-
-	m_vecFinalDest = vecInput;
-
-//	if ((m_pMoveWith || m_pChildMoveWith))// && !bNow)
-//	{
-//		ALERT(at_console,"Setting LinearMoveNow to happen after %f\n",gpGlobals->time);
-		SetThink(&CBaseToggle :: LinearMoveNow );
-		UTIL_DesiredThink( this );
-		//pev->nextthink = pev->ltime + 0.01;
-//	}
-//	else
-//	{
-//		LinearMoveNow(); // starring Martin Sheen and Marlon Brando
-//	}
-}
-
-void CBaseToggle :: LinearMoveNow( void )   // AJH Now supports acceleration
+void CBaseToggle :: LinearMoveNow( void )
 {
 //	ALERT(at_console, "LMNow %s\n", STRING(pev->targetname));
 
@@ -629,90 +521,35 @@ void CBaseToggle :: LinearMoveNow( void )   // AJH Now supports acceleration
 	else
 	    vecDest = m_vecFinalDest;
 
+//	ALERT(at_console,"LinearMoveNow: Destination is (%f %f %f), finalDest was (%f %f %f)\n",
+//		vecDest.x,vecDest.y,vecDest.z,
+//		m_vecFinalDest.x,m_vecFinalDest.y,m_vecFinalDest.z
+//	);
+
 	// Already there?
 	if (vecDest == pev->origin)
 	{
-		ALERT(at_console, "%s Already There!!\n", STRING(pev->targetname));
 		LinearMoveDone();
 		return;
 	}
 		
 	// set destdelta to the vector needed to move
 	Vector vecDestDelta = vecDest - pev->origin;
-
+	
 	// divide vector length by speed to get time to reach dest
 	float flTravelTime = vecDestDelta.Length() / m_flLinearMoveSpeed;
-	if (m_flLinearAccel >0 || m_flLinearDecel >0){   //AJH Are we using acceleration/deceleration?
-		
-		if(m_bDecelerate==true){	// Are we slowing down?
-			m_flCurrentTime-=ACCELTIMEINCREMENT;
-			if (m_flCurrentTime<=0){  
-			//	ALERT(at_debug, "%s has finished moving\n", STRING(pev->targetname));
-				LinearMoveDone();	//Finished slowing.
 
-				m_flCurrentTime = 0;	// 
-				m_bDecelerate = false;	// reset 
+	// set nextthink to trigger a call to LinearMoveDone when dest is reached
+	SetNextThink( flTravelTime, TRUE );
+	SetThink(&CBaseToggle :: LinearMoveDone );
 
-			}else{
+	// scale the destdelta vector by the time spent traveling to get velocity
+//	pev->velocity = vecDestDelta / flTravelTime;
+	UTIL_SetVelocity( this, vecDestDelta / flTravelTime );
 
-				
-			UTIL_SetVelocity( this, vecDestDelta.Normalize()*(m_flLinearDecel*m_flCurrentTime));  //Slow down
-			//	ALERT(at_debug, "%s is decelerating, time: %f speed: %f vector: %f %f %f\n", STRING(pev->targetname),m_flCurrentTime,(m_flLinearDecel*m_flCurrentTime),vecDestDelta.Normalize().x,vecDestDelta.Normalize().y,vecDestDelta.Normalize().z);
-			
-			// Continually calls LinearMoveNow every ACCELTIMEINCREMENT (seconds?) till stopped
-			if(m_flCurrentTime<ACCELTIMEINCREMENT){
-				SetNextThink( m_flCurrentTime, TRUE );
-				m_flCurrentTime=0;
-			}else{
-				SetNextThink( ACCELTIMEINCREMENT, TRUE );
-			}
-			SetThink(&CBaseToggle :: LinearMoveNow );
-			}
-
-		}else{
-
-			if(m_flCurrentTime < m_flAccelTime){	// We are Accelerating.
-
-			//	ALERT(at_console, "%s is accelerating\n", STRING(pev->targetname));
-				UTIL_SetVelocity( this, vecDestDelta.Normalize()*(m_flLinearAccel*m_flCurrentTime));
-				
-				// Continually calls LinearMoveNow every 0.1 (seconds?) till up to speed
-				SetNextThink(ACCELTIMEINCREMENT, TRUE );
-				SetThink(&CBaseToggle :: LinearMoveNow );
-				m_flCurrentTime+=ACCELTIMEINCREMENT;	
-				
-				//BUGBUG this will mean that we will be going faster than maxspeed on the last call to 'accelerate'
-
-			}else {			// We are now at full speed.
-
-			//	m_flAccelTime = m_flCurrentTime;	
-			//	ALERT(at_console, "%s is traveling at constant speed\n", STRING(pev->targetname));
-				
-				UTIL_SetVelocity( this, vecDestDelta.Normalize()*(m_flLinearMoveSpeed)); //we are probably going slightly faster.
-				
-				// set nextthink to trigger a recall to LinearMoveNow when we need to slow down.
-				SetNextThink( (vecDestDelta.Length()-(m_flLinearMoveSpeed*m_flDecelTime/2))/(m_flLinearMoveSpeed), TRUE );
-				SetThink(&CBaseToggle :: LinearMoveNow );
-				//	m_flCurrentTime = (flTravelTime);
-				m_bDecelerate=true;  //Set boolean so next call we know we are decelerating.
-				m_flDecelTime+=(m_flCurrentTime-m_flAccelTime); //Hack to fix time increment bug
-				m_flCurrentTime=m_flDecelTime;
-			}
-		}
-
-	}else{  // We are not using acceleration.
-	
-		// set nextthink to trigger a call to LinearMoveDone when dest is reached
-		SetNextThink( flTravelTime, TRUE );
-		SetThink(&CBaseToggle :: LinearMoveDone );
-
-		// scale the destdelta vector by the time spent traveling to get velocity
-		//	pev->velocity = vecDestDelta / flTravelTime;
-		UTIL_SetVelocity( this, vecDestDelta / flTravelTime );
-
-	//		ALERT(at_console, "LMNow \"%s\": Vel %f %f %f, think %f\n", STRING(pev->targetname), pev->velocity.x, pev->velocity.y, pev->velocity.z, pev->nextthink);
-	}
+//	ALERT(at_console, "LMNow \"%s\": Vel %f %f %f, think %f\n", STRING(pev->targetname), pev->velocity.x, pev->velocity.y, pev->velocity.z, pev->nextthink);
 }
+
 
 /*
 ============
@@ -872,11 +709,11 @@ void CBaseToggle :: AngularMoveDoneNow( void )
 	UTIL_SetAvelocity(this, g_vecZero);
 	if (m_pMoveWith)
 	{
-		UTIL_SetAngles(this, m_vecFinalAngle + m_pMoveWith->pev->angles);
+		UTIL_AssignAngles(this, m_vecFinalAngle + m_pMoveWith->pev->angles);
 	}
 	else
 	{
-		UTIL_SetAngles(this, m_vecFinalAngle);
+		UTIL_AssignAngles(this, m_vecFinalAngle);
 	}
 	DontThink();
 	if ( m_pfnCallWhenMoveDone )
@@ -1050,6 +887,6 @@ void CInfoMoveWith :: Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TY
 	// add this entity to the list of children
 	m_pSiblingMoveWith = m_pMoveWith->m_pChildMoveWith; // may be null: that's fine by me.
 	m_pMoveWith->m_pChildMoveWith = this;
-	m_vecMoveWithOffset = pev->origin - m_pMoveWith->pev->origin;
+	m_vecOffsetOrigin = pev->origin - m_pMoveWith->pev->origin;
 	UTIL_SetVelocity(this, g_vecZero); // match speed with the new entity
 }

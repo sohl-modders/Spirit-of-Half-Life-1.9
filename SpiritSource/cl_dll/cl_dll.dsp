@@ -43,7 +43,8 @@ RSC=rc.exe
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
 # ADD BASE CPP /nologo /MT /W3 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /MT /W3 /GX /Zi /O1 /I "..\utils\vgui\include" /I "..\engine" /I "..\common" /I "..\pm_shared" /I "..\dlls" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "CLIENT_DLL" /D "CLIENT_WEAPONS" /Fr /YX /FD /c
+# ADD CPP /nologo /MT /W3 /GX /O2 /I "..\utils\vgui\include" /I "..\engine" /I "..\common" /I "..\pm_shared" /I "..\dlls" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "CLIENT_DLL" /FD /c
+# SUBTRACT CPP /Fr /YX
 # ADD BASE MTL /nologo /D "NDEBUG" /win32
 # ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
 # ADD BASE RSC /l 0x409 /d "NDEBUG"
@@ -53,57 +54,55 @@ BSC32=bscmake.exe
 # ADD BSC32 /nologo
 LINK32=link.exe
 # ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /dll /machine:I386
-# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib winmm.lib ../utils/vgui/lib/win32_vc6/vgui.lib wsock32.lib opengl32.lib ../common/cg/cg.lib ../common/cg/cgGL.lib /nologo /subsystem:windows /dll /machine:I386 /out:".\Release\client.dll"
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib winmm.lib ../utils/vgui/lib/vgui.lib wsock32.lib opengl32.lib /nologo /subsystem:windows /dll /pdb:none /machine:I386 /out:".\Release\client.dll"
 # SUBTRACT LINK32 /map
 # Begin Custom Build
 TargetDir=.\Release
 InputPath=.\Release\client.dll
 SOURCE="$(InputPath)"
 
-BuildCmds= \
-	copy $(TargetDir)\client.dll "c:\games\half-life\spirit\cl_dlls\client1.5a4.dll" \
-	copy $(TargetDir)\client.dll "c:\games\half-life\spirit\cl_dlls\client.dll" \
-	
+"D:\Xash3D\spirit\cl_dlls\client.dll" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	copy $(TargetDir)\client.dll "D:\Xash3D\spirit\cl_dlls\client.dll"
 
-"c:\games\half-life\spirit\cl_dlls\client1.5a4.dll" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-   $(BuildCmds)
-
-"c:\games\half-life\spirit\cl_dlls\client.dll" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-   $(BuildCmds)
 # End Custom Build
 
 !ELSEIF  "$(CFG)" == "cl_dll - Win32 Debug"
 
 # PROP BASE Use_MFC 0
-# PROP BASE Use_Debug_Libraries 1
-# PROP BASE Output_Dir ".\Debug"
-# PROP BASE Intermediate_Dir ".\Debug"
+# PROP BASE Use_Debug_Libraries 0
+# PROP BASE Output_Dir "cl_dll___Win32_Debug"
+# PROP BASE Intermediate_Dir "cl_dll___Win32_Debug"
+# PROP BASE Ignore_Export_Lib 0
 # PROP BASE Target_Dir ""
 # PROP Use_MFC 0
-# PROP Use_Debug_Libraries 1
+# PROP Use_Debug_Libraries 0
 # PROP Output_Dir ".\Debug"
 # PROP Intermediate_Dir ".\Debug"
 # PROP Ignore_Export_Lib 0
 # PROP Target_Dir ""
-# ADD BASE CPP /nologo /MTd /W3 /Gm /GX /Zi /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /YX /c
-# ADD CPP /nologo /G5 /MTd /W3 /Gm /GR /GX /ZI /Od /I "..\dlls" /I "..\common" /I "..\pm_shared" /I "..\engine" /I "..\utils\vgui\include" /I "..\game_shared" /D "_DEBUG" /D "_MBCS" /D "WIN32" /D "_WINDOWS" /D "CLIENT_DLL" /D "CLIENT_WEAPONS" /FR /YX /FD /c
-# ADD BASE MTL /nologo /D "_DEBUG" /win32
-# ADD MTL /nologo /D "_DEBUG" /mktyplib203 /win32
-# ADD BASE RSC /l 0x409 /d "_DEBUG"
-# ADD RSC /l 0x409 /d "_DEBUG"
+# ADD BASE CPP /nologo /MT /W3 /GX /Zi /O2 /I "..\utils\vgui\include" /I "..\engine" /I "..\common" /I "..\pm_shared" /I "..\dlls" /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "CLIENT_DLL" /YX /FD /c
+# SUBTRACT BASE CPP /Fr
+# ADD CPP /nologo /MDd /W3 /Gm /Gi /GX /ZI /Od /I "..\utils\vgui\include" /I "..\engine" /I "..\common" /I "..\pm_shared" /I "..\dlls" /D "WIN32" /D "DEBUG" /D "_WINDOWS" /D "CLIENT_DLL" /FAs /Fr /FD /c
+# SUBTRACT CPP /YX
+# ADD BASE MTL /nologo /D "NDEBUG" /mktyplib203 /win32
+# ADD MTL /nologo /D "NDEBUG" /mktyplib203 /win32
+# ADD BASE RSC /l 0x409 /d "NDEBUG"
+# ADD RSC /l 0x409 /d "NDEBUG"
 BSC32=bscmake.exe
 # ADD BASE BSC32 /nologo
 # ADD BSC32 /nologo
 LINK32=link.exe
-# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /nologo /subsystem:windows /dll /debug /machine:I386
-# ADD LINK32 oleaut32.lib uuid.lib odbc32.lib odbccp32.lib kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib winmm.lib ../utils/vgui/lib/win32_vc6/vgui.lib wsock32.lib /nologo /subsystem:windows /dll /debug /machine:I386 /out:".\Debug\client.dll"
+# ADD BASE LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib winmm.lib ../utils/vgui/lib/vgui.lib wsock32.lib opengl32.lib /nologo /subsystem:windows /dll /machine:I386 /out:".\Release\client.dll"
+# SUBTRACT BASE LINK32 /map
+# ADD LINK32 kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib winmm.lib ../utils/vgui/lib/vgui.lib wsock32.lib opengl32.lib /nologo /subsystem:windows /dll /incremental:yes /debug /machine:I386 /out:".\Release\client.dll"
+# SUBTRACT LINK32 /map
 # Begin Custom Build
-TargetDir=.\Debug
-InputPath=.\Debug\client.dll
+TargetDir=.\Release
+InputPath=.\Release\client.dll
 SOURCE="$(InputPath)"
 
-"D:\sierra\half-life\spirit\cl_dlls\client.dll" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
-	copy $(TargetDir)\client.dll "D:\sierra\half-life\spirit\cl_dlls\client.dll"
+"D:\Xash3D\spirit\cl_dlls\client.dll" : $(SOURCE) "$(INTDIR)" "$(OUTDIR)"
+	copy $(TargetDir)\client.dll "D:\Xash3D\spirit\cl_dlls\client.dll"
 
 # End Custom Build
 
@@ -121,55 +120,11 @@ SOURCE="$(InputPath)"
 # PROP Default_Filter "*.CPP"
 # Begin Source File
 
-SOURCE=..\dlls\crossbow.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\crowbar.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\CustomMenu.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\egon.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\ev_hldm.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=..\dlls\gauss.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\glock.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\handgrenade.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\hl\hl_baseentity.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\hl\hl_events.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\hl\hl_objects.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\hl\hl_weapons.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\hornetgun.cpp
+SOURCE=.\hud_sound.cpp
 # End Source File
 # Begin Source File
 
@@ -177,31 +132,7 @@ SOURCE=..\common\interface.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=..\dlls\mp5.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\python.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\rpg.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\satchel.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\shotgun.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\squeakgrenade.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=..\dlls\tripmine.cpp
+SOURCE=.\rain.cpp
 # End Source File
 # Begin Source File
 
@@ -246,10 +177,6 @@ SOURCE=.\cdll_int.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\com_weapons.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\death.cpp
 # End Source File
 # Begin Source File
@@ -279,10 +206,6 @@ SOURCE=.\GameStudioModelRenderer.cpp
 # Begin Source File
 
 SOURCE=.\geiger.cpp
-# End Source File
-# Begin Source File
-
-SOURCE=.\glow.cpp
 # End Source File
 # Begin Source File
 
@@ -334,12 +257,19 @@ SOURCE=.\message.cpp
 # End Source File
 # Begin Source File
 
-SOURCE=.\mp3.cpp
-# End Source File
-# Begin Source File
-
 SOURCE=.\overview.cpp
+
+!IF  "$(CFG)" == "cl_dll - Win32 Release"
+
 # PROP Exclude_From_Build 1
+
+!ELSEIF  "$(CFG)" == "cl_dll - Win32 Debug"
+
+# PROP BASE Exclude_From_Build 1
+# PROP Exclude_From_Build 1
+
+!ENDIF 
+
 # End Source File
 # Begin Source File
 
@@ -368,10 +298,6 @@ SOURCE=..\pm_shared\pm_math.c
 # Begin Source File
 
 SOURCE=..\pm_shared\pm_shared.c
-# End Source File
-# Begin Source File
-
-SOURCE=.\rain.cpp
 # End Source File
 # Begin Source File
 
@@ -556,10 +482,6 @@ SOURCE=..\common\itrackeruser.h
 # Begin Source File
 
 SOURCE=.\kbutton.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\mp3.h
 # End Source File
 # Begin Source File
 

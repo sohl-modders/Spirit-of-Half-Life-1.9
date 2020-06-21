@@ -43,8 +43,7 @@ DLL_GLOBAL edict_t				*g_pBodyQueueHead;
 CGlobalState					gGlobalState;
 extern DLL_GLOBAL	int			gDisplayTitle;
 
-extern void W_Precache(void); //weapon precache - weapons.cpp
-extern void I_Precache(void); //item precache - items.cpp
+extern void W_Precache(void);
 
 //
 // This must match the list in util.h
@@ -474,13 +473,11 @@ extern DLL_GLOBAL BOOL		g_fGameOver;
 float g_flWeaponCheat; 
 
 BOOL g_startSuit; //LRC
-BOOL g_allowGJump;
 
 void CWorld :: Spawn( void )
 {
 	g_fGameOver = FALSE;
 	Precache( );
-	g_flWeaponCheat = CVAR_GET_FLOAT( "sv_cheats" );  // Is the impulse 101 command allowed?
 }
 
 void CWorld :: Precache( void )
@@ -551,7 +548,6 @@ void CWorld :: Precache( void )
 
 // player precaches     
 	W_Precache ();									// get weapon precaches
-	I_Precache ();	// get Inventory Item precaches
 
 	ClientPrecache();
 
@@ -582,7 +578,6 @@ void CWorld :: Precache( void )
 	PRECACHE_SOUND ("weapons/ric5.wav");
 
 	PRECACHE_MODEL( "sprites/null.spr" ); //LRC
-
 //
 // Setup light animation tables. 'a' is total darkness, 'z' is maxbright.
 //
@@ -628,6 +623,9 @@ void CWorld :: Precache( void )
 	else
 		CVAR_SET_FLOAT( "sv_zmax", 4096 );
 
+	// g-cont. moved here to right restore global WaveHeight on save\restore level
+	CVAR_SET_FLOAT( "sv_wateramp", pev->scale );
+
 	if ( pev->netname )
 	{
 		ALERT( at_aiconsole, "Chapter title: %s\n", STRING(pev->netname) );
@@ -652,6 +650,8 @@ void CWorld :: Precache( void )
 	else
 		gDisplayTitle = FALSE;
 
+	pev->spawnflags &= ~SF_WORLD_TITLE;		// don't show logo after save\restore
+
 	if ( pev->spawnflags & SF_WORLD_FORCETEAM )
 	{
 		CVAR_SET_FLOAT( "mp_defaultteam", 1 );
@@ -660,6 +660,8 @@ void CWorld :: Precache( void )
 	{
 		CVAR_SET_FLOAT( "mp_defaultteam", 0 );
 	}
+
+	g_flWeaponCheat = CVAR_GET_FLOAT( "sv_cheats" );  // Is the impulse 101 command allowed?
 }
 
 
@@ -684,7 +686,6 @@ void CWorld :: KeyValue( KeyValueData *pkvd )
 		// Sent over net now.
 		pev->scale = atof(pkvd->szValue) * (1.0/8.0);
 		pkvd->fHandled = TRUE;
-		CVAR_SET_FLOAT( "sv_wateramp", pev->scale );
 	}
 	else if ( FStrEq(pkvd->szKeyName, "MaxRange") )
 	{
@@ -744,29 +745,6 @@ void CWorld :: KeyValue( KeyValueData *pkvd )
 		pkvd->fHandled = TRUE;
 	}
 //LRC- ends
-
-	//AJH- Gauss Jump in single play
-	else if ( FStrEq(pkvd->szKeyName, "allow_sp_gjump") )
-	{
-		g_allowGJump = atoi(pkvd->szValue);
-		pkvd->fHandled = TRUE;
-	}
-	else if ( FStrEq(pkvd->szKeyName, "timed_damage") )
-	{
-		CVAR_SET_FLOAT( "timed_damage", atof(pkvd->szValue) );
-		pkvd->fHandled = TRUE;
-	}
-	else if ( FStrEq(pkvd->szKeyName, "max_medkit") )
-	{
-		CVAR_SET_FLOAT( "max_medkit", atof(pkvd->szValue) );
-		pkvd->fHandled = TRUE;
-	}
-	else if ( FStrEq(pkvd->szKeyName, "max_cameras") )
-	{
-		CVAR_SET_FLOAT( "max_cameras", atof(pkvd->szValue) );
-		pkvd->fHandled = TRUE;
-	}
-
 	else
 		CBaseEntity::KeyValue( pkvd );
 }

@@ -583,8 +583,8 @@ HEV_DET0 fvox/blip blip blip, biohazard_detected
 HEV_DET1 fvox/blip blip blip, chemical_detected 
 HEV_DET2 fvox/blip blip blip, radiation_detected
 HEV_DET3 fvox/blip blip blip, bio_reading
-HEV_DET4 fvox/blip blip blip, antitoxin_shot(e50), acquired
-HEV_DET5 fvox/blip blip blip, antidote_shot(e18) radiation_detected(s45 e58), acquired
+HEV_DET4 fvox/blip blip blip, antitoxin_shot(e50), onehundred percent
+HEV_DET5 fvox/blip blip blip, antitoxin_shot(e18) radiation_detected(s45 e58), onehundred percent
 
 //HEV_GR0r fvox/range twenty meters(t60)
 //HEV_GR1r fvox/range nineteen meters
@@ -592,7 +592,6 @@ HEV_DET5 fvox/blip blip blip, antidote_shot(e18) radiation_detected(s45 e58), ac
 
 
 // BARNEY
-BA_PQUEST barney/heyfella
 
 BA_OK0 barney/teamup2
 BA_OK1 barney/dobettertogether

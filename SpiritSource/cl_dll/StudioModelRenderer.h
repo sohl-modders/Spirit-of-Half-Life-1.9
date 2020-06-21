@@ -81,6 +81,8 @@ public:
 	// Send bones and verts to renderer
 	virtual void StudioRenderModel ( void );
 
+	virtual int StudioDrawReflection( int flags );
+
 	// Finalize rendering
 	virtual void StudioRenderFinal (void);
 	

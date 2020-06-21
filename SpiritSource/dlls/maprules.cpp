@@ -99,8 +99,6 @@ class CRulePointEntity : public CRuleEntity
 {
 public:
 	void		Spawn( void );
-	//LRC 1.8 - they don't cross transitions
-	virtual int	ObjectCaps( void ) { return CBaseEntity :: ObjectCaps() & ~FCAP_ACROSS_TRANSITION; }
 };
 
 void CRulePointEntity::Spawn( void )

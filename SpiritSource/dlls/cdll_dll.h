@@ -22,22 +22,25 @@
 
 #define MAX_WEAPONS		32		// ???
 
+#define WEAPON_CYCLER	31		// ?????
+
 #define MAX_WEAPON_SLOTS		5	// hud item selection slots
 #define MAX_ITEM_TYPES			6	// hud item selection slots
 
-#define MAX_ITEMS				10	//AJH (increased from 5 for expanded inventory system) hard coded item types
+#define MAX_ITEMS				5	// hard coded item types
 
-#define	HIDEHUD_WEAPONS		( 1<<0 )
-#define	HIDEHUD_FLASHLIGHT	( 1<<1 )
-#define	HIDEHUD_ALL			( 1<<2 )
-#define 	HIDEHUD_HEALTH		( 1<<3 )
-#define HIDEHUD_CUSTOMCROSSHAIR ( 1<<4 ) //LRC - probably not the right way to do this, but it's just an experiment.
+#define HIDEHUD_WEAPONS		( 1<<0 )
+#define HIDEHUD_FLASHLIGHT		( 1<<1 )
+#define HIDEHUD_ALL			( 1<<2 )
+#define HIDEHUD_HEALTH		( 1<<3 )
+#define HIDEHUD_CROSSHAIR		( 1<<4 ) //LRC - probably not the right way to do this, but it's just an experiment.
+#define ITEM_SUIT			( 1<<5 ) //g-cont. move suit flag here
 
-#define	MAX_AMMO_TYPES	32		// ???
-#define MAX_AMMO_SLOTS  32		// not really slots
+#define MAX_AMMO_TYPES		32		// ???
+#define MAX_AMMO_SLOTS		32		// not really slots
 
 #define HUD_PRINTNOTIFY		1
-#define HUD_PRINTCONSOLE	2
+#define HUD_PRINTCONSOLE		2
 #define HUD_PRINTTALK		3
 #define HUD_PRINTCENTER		4
 

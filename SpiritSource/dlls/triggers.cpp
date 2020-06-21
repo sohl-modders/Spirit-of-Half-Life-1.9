@@ -106,6 +106,139 @@ void CFrictionModifier :: KeyValue( KeyValueData *pkvd )
 		CBaseEntity::KeyValue( pkvd );
 }
 
+class CTrainSetSpeed : public CBaseDelay
+{
+public:
+	void		Spawn( void );
+	void		KeyValue( KeyValueData *pkvd );
+	void EXPORT	Find( void );
+	void EXPORT	UpdateSpeed( void );
+	virtual int	Save( CSave &save );
+	virtual int	Restore( CRestore &restore );
+
+	virtual int	ObjectCaps( void ) { return CBaseEntity :: ObjectCaps() & ~FCAP_ACROSS_TRANSITION; }
+	virtual void	Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+
+	static	TYPEDESCRIPTION m_SaveData[];
+
+	CFuncTrackTrain	*m_pTrain;
+	int		m_iMode;
+	float		m_flTime;
+	float		m_flTargetSpeed;
+	float		m_flInterval;
+};
+
+LINK_ENTITY_TO_CLASS( train_setspeed, CTrainSetSpeed );
+
+// Global Savedata for changelevel friction modifier
+TYPEDESCRIPTION	CTrainSetSpeed::m_SaveData[] =
+{
+	DEFINE_FIELD( CTrainSetSpeed, m_iMode, FIELD_CHARACTER ),
+	DEFINE_FIELD( CTrainSetSpeed, m_flTime, FIELD_FLOAT ),
+	DEFINE_FIELD( CTrainSetSpeed, m_flInterval, FIELD_FLOAT ),
+	DEFINE_FIELD( CTrainSetSpeed, m_pTrain, FIELD_CLASSPTR ),
+};
+
+IMPLEMENT_SAVERESTORE( CTrainSetSpeed, CBaseEntity );
+
+// Sets toucher's friction to m_frictionFraction (1.0 = normal friction)
+void CTrainSetSpeed :: KeyValue( KeyValueData *pkvd )
+{
+	if (FStrEq(pkvd->szKeyName, "time"))
+	{
+		m_flTime = atof(pkvd->szValue);
+		pkvd->fHandled = TRUE;
+	}
+	if (FStrEq(pkvd->szKeyName, "mode"))
+	{
+		m_iMode = atof(pkvd->szValue);
+		pkvd->fHandled = TRUE;
+	}
+	else if (FStrEq(pkvd->szKeyName, "train"))
+	{
+		pev->netname = ALLOC_STRING( pkvd->szValue );
+		pkvd->fHandled = TRUE;
+	}
+	else
+		CBaseEntity::KeyValue( pkvd );
+}
+
+void CTrainSetSpeed :: Spawn( void )
+{
+	if( m_flTime <= 0 ) m_flTime = 10.0f;
+
+	SetThink( &CTrainSetSpeed :: Find );
+	SetNextThink( 0.1 );
+}
+
+void CTrainSetSpeed :: Find( void )
+{
+	CBaseEntity	*pEntity = NULL;
+
+	while(( pEntity = UTIL_FindEntityByTargetname( pEntity, STRING( pev->netname ))) != NULL )
+	{
+		// found the tracktrain
+		if( FClassnameIs( pEntity->pev, "func_tracktrain" ) )
+		{
+//			ALERT( at_console, "Found tracktrain: %s\n", STRING( pEntity->pev->targetname ));
+			m_pTrain = (CFuncTrackTrain *)pEntity;
+			break;
+		}
+	}
+}
+
+void CTrainSetSpeed :: Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	if( !m_pTrain || !m_pTrain->pev->speed )
+		return;	// no train or train not moving
+
+	m_hActivator = pActivator;
+
+	float	m_flDelta;
+
+	switch( m_iMode )
+	{
+	case 1:
+		m_flDelta = pev->speed - m_pTrain->pev->speed;
+		m_flInterval = m_flDelta / (m_flTime / 0.1 ); // nextthink 0.1
+		SetThink( &CTrainSetSpeed :: UpdateSpeed );
+		SetNextThink( 0.1 );
+		break;
+	case 0:
+		m_pTrain->pev->speed = pev->speed;
+		break;
+	}
+}
+
+void CTrainSetSpeed :: UpdateSpeed( void )
+{
+	if( !m_pTrain || !m_pTrain->pev->speed )
+		return;	// no train or train not moving
+
+	if( fabs( m_pTrain->pev->speed - pev->speed ) <= 1.0f )
+	{
+		SUB_UseTargets( m_hActivator, USE_TOGGLE, 0 );
+		return;	// reached
+	}
+
+	m_pTrain->pev->speed += m_flInterval;
+
+	if( m_pTrain->pev->speed >= 2000 )
+	{
+		SUB_UseTargets( m_hActivator, USE_TOGGLE, 0 );
+		m_pTrain->pev->speed = 2000;
+		return;
+	}
+
+	if( m_pTrain->pev->speed < -2000 )
+	{
+		SUB_UseTargets( m_hActivator, USE_TOGGLE, 0 );
+		m_pTrain->pev->speed = -2000;
+		return;
+	}
+
+	SetNextThink( 0.1 );	
+}
 
 // This trigger will fire when the level spawns (or respawns if not fire once)
 // It will check a global state before firing.  It supports delay and killtargets
@@ -119,7 +252,7 @@ public:
 	void KeyValue( KeyValueData *pkvd );
 	void Activate( void );
 	void DesiredAction( void );
-
+          
 	int ObjectCaps( void ) { return CBaseDelay::ObjectCaps() & ~FCAP_ACROSS_TRANSITION; }
 	virtual int		Save( CSave &save );
 	virtual int		Restore( CRestore &restore );
@@ -198,9 +331,9 @@ void CAutoTrigger::DesiredAction( void )
 	}
 }
 
-#define SF_RELAY_FIREONCE	0x00000001
-#define SF_RELAY_DEBUG		0x00000002
-#define SF_FIRE_CAMERA		0x00000004	//AJH This is no longer SF2 as that is supposed to be 'debug'
+#define SF_RELAY_FIREONCE		0x00000001
+#define SF_FIRE_CAMERA		0x00000002
+#define SF_RELAY_USESAME		0x80000000
 
 class CTriggerRelay : public CBaseDelay
 {
@@ -222,7 +355,7 @@ private:
 };
 LINK_ENTITY_TO_CLASS( trigger_relay, CTriggerRelay );
 
-TYPEDESCRIPTION	CTriggerRelay::m_SaveData[] =
+TYPEDESCRIPTION	CTriggerRelay::m_SaveData[] = 
 {
 	DEFINE_FIELD( CTriggerRelay, m_triggerType, FIELD_INTEGER ),
 	DEFINE_FIELD( CTriggerRelay, m_sMaster, FIELD_STRING ),
@@ -249,7 +382,7 @@ void CTriggerRelay::KeyValue( KeyValueData *pkvd )
 		switch( type )
 		{
 		case 0:
-			m_triggerType = USE_ON;
+			m_triggerType = (USE_TYPE)-1;	// will be changed in spawn
 			break;
 		case 2:
 			m_triggerType = USE_TOGGLE;
@@ -264,7 +397,7 @@ void CTriggerRelay::KeyValue( KeyValueData *pkvd )
 			m_triggerType = USE_SET;
 			break;
 		default:
-			m_triggerType = USE_OFF;
+			m_triggerType = USE_ON;
 			break;
 		}
 		pkvd->fHandled = TRUE;
@@ -273,11 +406,10 @@ void CTriggerRelay::KeyValue( KeyValueData *pkvd )
 		CBaseDelay::KeyValue( pkvd );
 }
 
-
 void CTriggerRelay::Spawn( void )
 {
-	if (FStringNull(m_triggerType)) //G-Cont. Hmm... In original Half-life, all nice works without this stuff
-	m_triggerType = USE_ON;
+	if( m_triggerType == -1 ) m_triggerType = USE_OFF;// "triggerstate" is present and set to 'OFF'
+	else if( !m_triggerType ) m_triggerType = USE_ON;	// "triggerstate" is missing - defaulting to 'ON'
 }
 
 void CTriggerRelay::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
@@ -285,49 +417,25 @@ void CTriggerRelay::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE
 	if (!UTIL_IsMasterTriggered(m_sMaster,pActivator))
 	{
 		if (m_iszAltTarget)
-				{
-					//FIXME: the alternate target should really use m_flDelay.
-			//if (pev->spawnflags & SF_RELAY_USESAME)
-					if (m_triggerType == USE_SAME)
-						FireTargets( STRING(m_iszAltTarget), pActivator, this, useType, 0 );
-					else
-						FireTargets( STRING(m_iszAltTarget), pActivator, this, m_triggerType, 0 );
-					if (pev->spawnflags & SF_RELAY_DEBUG)
-						ALERT(at_debug,"DEBUG: trigger_relay \"%s\" locked by master %s - fired alternate target %s\n",STRING(pev->targetname), STRING(m_sMaster), STRING(m_iszAltTarget));
-					if ( pev->spawnflags & SF_RELAY_FIREONCE )
-					{
-						if (pev->spawnflags & SF_RELAY_DEBUG)
-							ALERT(at_debug, "trigger_relay \"%s\" removes itself.\n");
-						UTIL_Remove( this );
-					}
-				}
-				else if (pev->spawnflags & SF_RELAY_DEBUG)
-					ALERT(at_debug,"DEBUG: trigger_relay \"%s\" wasn't activated: locked by master %s\n",STRING(pev->targetname), STRING(m_sMaster));
+		{
+			//FIXME: the alternate target should really use m_flDelay.
+			if (pev->spawnflags & SF_RELAY_USESAME)
+				FireTargets( STRING(m_iszAltTarget), pActivator, this, useType, 0 );
+			else
+				FireTargets( STRING(m_iszAltTarget), pActivator, this, m_triggerType, 0 );
+			if ( pev->spawnflags & SF_RELAY_FIREONCE )
+			{
+				UTIL_Remove( this );
+			}
+		}
 		return;
 	}
-	if (pev->spawnflags & SF_RELAY_DEBUG)
-		{
-			ALERT(at_debug,"DEBUG: trigger_relay \"%s\" was sent %s",STRING(pev->targetname), GetStringForUseType(useType));
-			if (pActivator)
-			{
-				if (FStringNull(pActivator->pev->targetname))
-					ALERT(at_debug," from \"%s\"", STRING(pActivator->pev->classname));
-				else
-					ALERT(at_debug," from \"%s\"", STRING(pActivator->pev->targetname));
-			}
-			else
-				ALERT(at_debug," (no locus)");
-	}
 
-	if (FStringNull(pev->target) && !m_iszKillTarget)
-		{
-			if (pev->spawnflags & SF_RELAY_DEBUG) ALERT(at_debug, ".\n");
-			return;
-	}
+	if (FStringNull(pev->target) && !m_iszKillTarget) return;
 
 	if ( pev->spawnflags & SF_FIRE_CAMERA )//For triggering once if player see in camera
 	{
-	if ( !pActivator || !pActivator->IsPlayer() )
+		if ( !pActivator || !pActivator->IsPlayer() )
 		{
 			pActivator = CBaseEntity::Instance(g_engfuncs.pfnPEntityOfEntIndex( 1 ));
 		}
@@ -335,48 +443,29 @@ void CTriggerRelay::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE
 		{
  			if(((CBasePlayer *)pActivator)->viewFlags == 0)
 			{
-// 				ALERT(at_console, "player is not curently see in camera\n");
+// 				ALERT(at_console, "player is not currently see in camera\n");			
 				return;
 			}
 
 		}
 	}
-	if(!pev->skin)pev->skin=0;//AJH set skin (ratio to return) to default
 
-	if (pev->message)
-		value = CalcLocus_Number(pActivator, STRING(pev->message)/*LRC 1.8 removed ,pev->skin*/);//AJH skin (ratio to return)
+	if (pev->message) value = CalcLocus_Ratio(pActivator, STRING(pev->message));
 
-	if (m_triggerType == USE_SAME){
-		if (pev->spawnflags & SF_RELAY_DEBUG){
-			if (m_flDelay)
-				ALERT(at_debug,": will send %s(same) in %f seconds.\n",GetStringForUseType(useType),m_flDelay);
-			else
-				ALERT(at_debug,": sending %s(same) now.\n",GetStringForUseType(useType));
-		}
+	if (m_triggerType == USE_SAME)
+	{
 		SUB_UseTargets( pActivator, useType, value );
-	}else if (m_triggerType == USE_SET){
-		if (pev->spawnflags & SF_RELAY_DEBUG){
-			if (m_flDelay)
-				ALERT(at_debug,": will send ratio %f in %f seconds.\n",value,m_flDelay);
-			else
-				ALERT(at_debug,": sending ratio %f now.\n",value);
-		}
+	}
+	else if (m_triggerType == USE_SET)
+	{
 		SUB_UseTargets( pActivator, m_triggerType, value );
-	}else{
-		if (pev->spawnflags & SF_RELAY_DEBUG)
-		{
-			if (m_flDelay)
-				ALERT(at_debug,": will send %s in %f seconds.\n",GetStringForUseType(m_triggerType),m_flDelay);
-			else
-				ALERT(at_debug,": sending %s now.\n",GetStringForUseType(m_triggerType));
-		}
+	}
+	else
+	{
 		SUB_UseTargets( pActivator, m_triggerType, 0 );
 	}
-	if ( pev->spawnflags & SF_RELAY_FIREONCE ){
-		if (pev->spawnflags & SF_RELAY_DEBUG)
-			ALERT(at_debug, "trigger_relay \"%s\" removes itself.\n");
-		UTIL_Remove( this );
-	}
+
+	if ( pev->spawnflags & SF_RELAY_FIREONCE ) UTIL_Remove( this );
 }
 
 //===========================================
@@ -512,19 +601,6 @@ public:
 	int		m_iszThreadName; //LRC
 	int		m_iszLocusThread; //LRC
 
-	bool CalcNumber( CBaseEntity *pLocus, float* OUTresult )
-	{
-		if ( m_startTime > 0 )
-		{
-			*OUTresult = gpGlobals->time - m_startTime;
-			return true;
-		}
-		else
-		{
-			return false;
-		}
-	}
-
 	EHANDLE m_hActivator;
 private:
 	USE_TYPE	m_triggerType; //LRC
@@ -639,28 +715,29 @@ void CMultiManager :: KeyValue( KeyValueData *pkvd )
 
 void CMultiManager :: Spawn( void )
 {
-	CBaseEntity *pTarget;
-		pTarget = UTIL_FindEntityByTargetname( NULL, STRING(pev->targetname) );
-		if ( pTarget = UTIL_FindEntityByTargetname( NULL, "gen_lightsmm2") )
+	// LRC
+	if( m_cTargets > MAX_MULTI_TARGETS )
+	{
+		ALERT(at_warning, "multi_manager \"%s\" has too many targets (limit is %d, it has %d)\n", STRING( pev->targetname ), MAX_MULTI_TARGETS, m_cTargets );
+		m_cTargets = MAX_MULTI_TARGETS;
+	}
+
+	// check for invalid multi_managers
+	for ( int i = 0; i < m_cTargets; i++ )
+	{
+		if ( FStrEq( STRING( m_iTargetName[i] ), STRING( pev->targetname )) && m_flTargetDelay[i] == 0.0f )
 		{
-		ALERT(at_debug, "DEBUG: multi_manager \"%s\": killed.\n", STRING(pev->targetname));
-		UTIL_Remove(this);
-		//G-Cont. this code is fixed BUG for blowout map c1a0a
+			ALERT( at_error, "infinite loop multi_manager with name %s removed from map\n", STRING( pev->targetname ));
+			UTIL_Remove( this );
+			return;
 		}
+	}
 
 	pev->solid = SOLID_NOT;
 	SetUse(&CMultiManager :: ManagerUse );
 	SetThink(&CMultiManager :: ManagerThink);
 
 	m_iState = STATE_OFF;
-	m_startTime = 0;
-
-	//LRC
-	if (m_cTargets > MAX_MULTI_TARGETS)
-	{
-		ALERT(at_debug, "WARNING: multi_manager \"%s\" has too many targets (limit is %d, it has %d)\n", STRING(pev->targetname), MAX_MULTI_TARGETS, m_cTargets);
-		m_cTargets = MAX_MULTI_TARGETS;
-	}
 
 	if (!FBitSet(pev->spawnflags,SF_MULTIMAN_TRIGCHOSEN))
 		m_triggerType = USE_TOGGLE;
@@ -1307,46 +1384,16 @@ BOOL CStateWatcher :: EvalLogic ( CBaseEntity *pActivator )
 //***********************************************************
 #define SF_WRCOUNT_FIRESTART	0x0001
 #define SF_WRCOUNT_STARTED		0x8000
-class CWatcherCount : public CBaseToggle	//AJH Heavily rewritten as it didn't work
+class CWatcherCount : public CBaseToggle
 {
 public:
-	int m_iMode;
-
-	void KeyValue( KeyValueData *pkvd );
-	virtual int		Save( CSave &save );
-	virtual int		Restore( CRestore &restore );
-	static	TYPEDESCRIPTION m_SaveData[];
-
 	void Spawn ( void );
 	void EXPORT Think ( void );
 	virtual STATE GetState( void ) { return (pev->spawnflags & SF_SWATCHER_VALID)?STATE_ON:STATE_OFF; };
 	virtual int	ObjectCaps( void ) { return CBaseEntity :: ObjectCaps() & ~FCAP_ACROSS_TRANSITION; }
-
-	virtual bool	CalcNumber( CBaseEntity *pLocus, float* OUTresult )
-	{
-		*OUTresult = pev->iuser1;
-		return true;
-	}
 };
 
-TYPEDESCRIPTION	CWatcherCount::m_SaveData[] =
-{
-	DEFINE_FIELD( CWatcherCount, m_iMode, FIELD_INTEGER ),
-};
-
-IMPLEMENT_SAVERESTORE(CWatcherCount,CBaseToggle);
 LINK_ENTITY_TO_CLASS( watcher_count, CWatcherCount );
-
-void CWatcherCount::KeyValue( KeyValueData *pkvd )
-{
-	if (FStrEq(pkvd->szKeyName, "m_iMode"))
-	{
-		m_iMode = atof( pkvd->szValue );
-		pkvd->fHandled = TRUE;
-	}
-	else
-		CBaseToggle::KeyValue( pkvd );
-}
 
 void CWatcherCount :: Spawn ( void )
 {
@@ -1363,21 +1410,21 @@ void CWatcherCount :: Think ( void )
 	pCurrent = UTIL_FindEntityByTargetname( NULL, STRING(pev->noise) );
 	while (pCurrent != NULL)
 	{
-		if (pCurrent->GetState()!= STATE_OFF)
-			iCount++;
+		iCount++;
 		pCurrent = UTIL_FindEntityByTargetname( pCurrent, STRING(pev->noise) );
 	}
-/*	if (pev->spawnflags & SF_WRCOUNT_STARTED)
+
+	if (pev->spawnflags & SF_WRCOUNT_STARTED)
 	{
 		if (iCount > pev->frags)
 		{
-			if (iCount > pev->impulse && pev->frags <= pev->impulse)
+			if (iCount < pev->impulse && pev->frags >= pev->impulse)
 				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
 			FireTargets( STRING(pev->noise1), this, this, USE_TOGGLE, 0 );
 		}
 		else if (iCount < pev->frags)
 		{
-			if (iCount <= pev->impulse && pev->frags > pev->impulse)
+			if (iCount >= pev->impulse && pev->frags < pev->impulse)
 				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
 			FireTargets( STRING(pev->noise2), this, this, USE_TOGGLE, 0 );
 		}
@@ -1392,291 +1439,8 @@ void CWatcherCount :: Think ( void )
 			else
 				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
 		}
-	}*/
-
-	if (pev->spawnflags & SF_WRCOUNT_STARTED)    // AJH old code was totally buggered
-	{											 // this should actually work!!
-		if (iCount > pev->iuser1)
-		{
-			FireTargets( STRING(pev->noise1), this, this, USE_TOGGLE, 0 );
-		}
-		else if (iCount < pev->iuser1)
-		{
-			FireTargets( STRING(pev->noise2), this, this, USE_TOGGLE, 0 );
-		}
-
-		switch (m_iMode){
-		case 0:{
-			if (iCount == pev->impulse && pev->iuser1 != pev->impulse){
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-
-			else if (iCount != pev->impulse && pev->iuser1 == pev->impulse){
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			break;
-		}
-
-		case 1:{
-			if (iCount > pev->impulse && pev->iuser1 <= pev->impulse){
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			else if (iCount <= pev->impulse && pev->iuser1 > pev->impulse){
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			break;
-		}
-
-		case 2:{
-			if (iCount < pev->impulse && pev->iuser1 >= pev->impulse){
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			else if (iCount >= pev->impulse && pev->iuser1 < pev->impulse){
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			break;
-		}
-
-		case 3:{
-			if (iCount != pev->impulse && pev->iuser1 == pev->impulse){
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			else if (iCount == pev->impulse && pev->iuser1 != pev->impulse){
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			break;
-		}
-		case 4:{
-			if (iCount <= pev->impulse && pev->iuser1 > pev->impulse){
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			else if (iCount > pev->impulse && pev->iuser1 <= pev->impulse){
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			break;
-		}
-		case 5:{
-			if (iCount >= pev->impulse && pev->iuser1 < pev->impulse){
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			else if (iCount < pev->impulse && pev->iuser1 >= pev->impulse){
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-				FireTargets( STRING(pev->target), this, this, USE_TOGGLE, 0 );
-			}
-			break;
-		}
-		default:{break;}
-		}
 	}
-	else
-	{
-		pev->spawnflags |= SF_WRCOUNT_STARTED;
-		if (pev->spawnflags & SF_WRCOUNT_FIRESTART)
-		{
-			if (iCount < pev->impulse)
-				FireTargets( STRING(pev->netname), this, this, USE_TOGGLE, 0 );
-			else
-				FireTargets( STRING(pev->message), this, this, USE_TOGGLE, 0 );
-		}
-	}
-	pev->iuser1 = iCount;
-}
-
-//***********************************************************
-#define SF_WATCHERRATIO_MANUALUPDATES	0x0001
-#define SF_WATCHERRATIO_FIREONSTART		0x0002
-#define SF_WATCHERRATIO_DEBUGMODE		0x0004
-
-#define SF_WATCHERRATIO_FIRSTUPDATE		0x8000
-#define SF_WATCHERRATIO_ON				0x10000
-
-enum WatcherRatioComparison
-{
-	WRC_Equal,
-	WRC_NotEqual,
-	WRC_Greater,
-	WRC_GreaterOrEqual,
-	WRC_Less,
-	WRC_LessOrEqual,
-};
-
-class CWatcherRatio : public CBaseToggle
-{
-public:
-	void Spawn ( void );
-	void EXPORT Think ( void );
-	void Use ( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
-	virtual STATE GetState( void ) { return (pev->spawnflags & SF_WATCHERRATIO_ON)?STATE_ON:STATE_OFF; };
-	virtual int	ObjectCaps( void ) { return CBaseEntity :: ObjectCaps() & ~FCAP_ACROSS_TRANSITION; }
-	bool CalcNumber( CBaseEntity *pLocus, float* OUTresult );
-
-	void UpdateState(CBaseEntity* pLocus, bool mustTrigger);
-};
-
-LINK_ENTITY_TO_CLASS( watcher_number, CWatcherRatio );
-
-void CWatcherRatio :: Spawn ( void )
-{
-	pev->solid = SOLID_NOT;
-	pev->spawnflags |= SF_WATCHERRATIO_FIRSTUPDATE;
-	if ( !(pev->spawnflags & SF_WATCHERRATIO_MANUALUPDATES) )
-	{
-		SetNextThink( 0.5 );
-	}
-}
-
-void CWatcherRatio :: Think ( void )
-{
-	SetNextThink( 0.1 );
-
-	UpdateState(NULL, (pev->spawnflags & SF_WATCHERRATIO_FIRSTUPDATE) && (pev->spawnflags & SF_WATCHERRATIO_FIREONSTART));
-}
-
-void CWatcherRatio :: Use ( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
-{
-	UpdateState(pActivator, FALSE);//pev->spawnflags & SF_WATCHERRATIO_ACTASRELAY);
-}
-
-void CWatcherRatio :: UpdateState(CBaseEntity* pLocus, bool mustTrigger)
-{
-	float testVal = CalcLocus_Number( pLocus, STRING(pev->netname) );
-	
-	float cmpVal;
-	float toleranceVal = FStringNull(pev->noise1)? 0: CalcLocus_Number( pLocus, STRING(pev->noise1) );
-
-	if ( FStringNull(pev->noise) )
-	{
-		if ( pev->spawnflags & SF_WATCHERRATIO_FIRSTUPDATE )
-			cmpVal = testVal;
-		else
-			cmpVal = pev->frags; // frags = previous testVal
-	}
-	else
-	{
-		cmpVal = CalcLocus_Number( pLocus, STRING(pev->noise) );
-	}
-
-	pev->frags = testVal; // store it for next time
-
-	bool testresult;
-	bool withinTolerance = abs(testVal - cmpVal) <= toleranceVal;
-	switch( pev->impulse )
-	{
-	case WRC_Equal:
-		testresult = withinTolerance; break;
-	case WRC_NotEqual:
-		testresult = !withinTolerance; break;
-	case WRC_Greater:
-		testresult = testVal > cmpVal && !withinTolerance; break;
-	case WRC_GreaterOrEqual:
-		testresult = testVal > cmpVal || withinTolerance; break;
-	case WRC_Less:
-		testresult = testVal < cmpVal && !withinTolerance; break;
-	case WRC_LessOrEqual:
-		testresult = testVal < cmpVal || withinTolerance; break;
-	}
-
-	const char* debugString = NULL;
-	const char* opString = NULL;
-
-	if ( testresult )
-	{
-		if ( pev->spawnflags & SF_WATCHERRATIO_DEBUGMODE )
-		{
-			if ( pev->spawnflags & SF_WATCHERRATIO_FIRSTUPDATE )
-			{
-				debugString = "starts on";
-			}
-			else if ( !(pev->spawnflags & SF_WATCHERRATIO_ON) )
-			{
-				debugString = "TURNS ON";
-			}
-			else
-			{
-				debugString = "still on";
-			}
-
-			switch( pev->impulse )
-			{
-				case WRC_Equal: opString = "=="; break;
-				case WRC_NotEqual: opString = "!="; break;
-				case WRC_Greater: opString = ">"; break;
-				case WRC_GreaterOrEqual: opString = ">="; break;
-				case WRC_Less: opString = "<"; break;
-				case WRC_LessOrEqual: opString = "<="; break;
-			}
-		}
-
-		if ( (!(pev->spawnflags & SF_WATCHERRATIO_ON) &&
-			!(pev->spawnflags & SF_WATCHERRATIO_FIRSTUPDATE))
-			|| mustTrigger )
-		{
-			// turned on, fire noise2
-			FireTargets(STRING(pev->noise2), this, this, USE_TOGGLE, 0);
-		}
-		pev->spawnflags |= SF_WATCHERRATIO_ON;
-	}
-	else
-	{
-		if ( pev->spawnflags & SF_WATCHERRATIO_DEBUGMODE )
-		{
-			if ( pev->spawnflags & SF_WATCHERRATIO_FIRSTUPDATE )
-			{
-				debugString = "starts off";
-			}
-			else if ( pev->spawnflags & SF_WATCHERRATIO_ON )
-			{
-				debugString = "TURNS OFF";
-			}
-			else
-			{
-				debugString = "still off";
-			}
-
-			switch( pev->impulse )
-			{
-				case WRC_Equal: opString = "!="; break;
-				case WRC_NotEqual: opString = "=="; break;
-				case WRC_Greater: opString = "<="; break;
-				case WRC_GreaterOrEqual: opString = "<"; break;
-				case WRC_Less: opString = ">="; break;
-				case WRC_LessOrEqual: opString = ">"; break;
-			}
-		}
-
-		if ( (pev->spawnflags & SF_WATCHERRATIO_ON &&
-			!(pev->spawnflags & SF_WATCHERRATIO_FIRSTUPDATE))
-			|| mustTrigger )
-		{
-			// turned off, fire noise3
-			FireTargets(STRING(pev->noise3), this, this, USE_TOGGLE, 0);
-		}
-		pev->spawnflags &= ~SF_WATCHERRATIO_ON;
-	}
-
-	if ( debugString )
-	{
-		ALERT(at_console, "watcher_number \"%s\" %s (%f %s %f with tolerance %f)\n", STRING(pev->targetname), debugString, testVal, opString, cmpVal, toleranceVal);
-	}
-
-	pev->spawnflags &= ~SF_WATCHERRATIO_FIRSTUPDATE;
-}
-
-bool CWatcherRatio::CalcNumber( CBaseEntity *pLocus, float* OUTresult )
-{
-	*OUTresult = float(pev->frags);
-	return true;
+	pev->frags = iCount;
 }
 
 //***********************************************************
@@ -1724,7 +1488,7 @@ public:
 	int m_iszAmtFactor;
 };
 
-TYPEDESCRIPTION	CRenderFxFader::m_SaveData[] =
+TYPEDESCRIPTION	CRenderFxFader::m_SaveData[] = 
 {
 	DEFINE_FIELD( CRenderFxFader, m_flStartTime, FIELD_FLOAT),
 	DEFINE_FIELD( CRenderFxFader, m_flDuration, FIELD_FLOAT),
@@ -1736,9 +1500,9 @@ TYPEDESCRIPTION	CRenderFxFader::m_SaveData[] =
 	DEFINE_FIELD( CRenderFxFader, m_fStartScale, FIELD_FLOAT),
 	DEFINE_FIELD( CRenderFxFader, m_fOffsetScale, FIELD_FLOAT ),
 	DEFINE_FIELD( CRenderFxFader, m_hTarget, FIELD_EHANDLE ),
-};
+}; IMPLEMENT_SAVERESTORE(CRenderFxFader,CBaseEntity);
 
-IMPLEMENT_SAVERESTORE(CRenderFxFader,CBaseEntity);
+LINK_ENTITY_TO_CLASS( fxfader, CRenderFxFader );
 
 void CRenderFxFader :: Spawn( void )
 {
@@ -1808,7 +1572,7 @@ void CRenderFxManager :: KeyValue( KeyValueData *pkvd )
 {
 	if (FStrEq(pkvd->szKeyName, "m_fScale"))
 	{
-		pev->noise = ALLOC_STRING(pkvd->szValue); //AJH Allows LR scale (Thanks Mike)
+		pev->scale = atof(pkvd->szValue);
 		pkvd->fHandled = TRUE;
 	}
 	else
@@ -1842,7 +1606,7 @@ void CRenderFxManager::Affect( CBaseEntity *pTarget, BOOL bIsFirst, CBaseEntity 
 
 	float fAmtFactor = 1;
 	if ( pev->message && !FBitSet( pev->spawnflags, SF_RENDER_MASKAMT ) )
-		fAmtFactor = CalcLocus_Number(pActivator, STRING(pev->message));
+		fAmtFactor = CalcLocus_Ratio(pActivator, STRING(pev->message));
 
 	if ( !FBitSet( pev->spawnflags, SF_RENDER_MASKFX ) )
 		pevTarget->renderfx = pev->renderfx;
@@ -1859,10 +1623,8 @@ void CRenderFxManager::Affect( CBaseEntity *pTarget, BOOL bIsFirst, CBaseEntity 
 			pevTarget->renderamt = pev->renderamt * fAmtFactor;
 		if ( !FBitSet( pev->spawnflags, SF_RENDER_MASKCOLOR ) )
 			pevTarget->rendercolor = pev->rendercolor;
-		if ( pev->noise ){
-			pevTarget->scale = CalcLocus_Number(pActivator,STRING(pev->noise));	//AJH Allows LR scale
-			ALERT(at_debug,"Setting scale from %s, to %f\n",STRING(pev->noise),pevTarget->scale);
-		}
+		if ( pev->scale )
+			pevTarget->scale = pev->scale;
 
 		if (bIsFirst)
 			FireTargets( STRING(pev->netname), pTarget, this, USE_TOGGLE, 0 );
@@ -1872,6 +1634,7 @@ void CRenderFxManager::Affect( CBaseEntity *pTarget, BOOL bIsFirst, CBaseEntity 
 		//LRC - fade the entity in/out!
 		// (We create seperate fader entities to do this, one for each entity that needs fading.)
 		CRenderFxFader *pFader = GetClassPtr( (CRenderFxFader *)NULL );
+		pFader->pev->classname = MAKE_STRING( "fxfader" );	// g-cont. allow saverestore
 		pFader->m_hTarget = pTarget;
 		pFader->m_iStartAmt = pevTarget->renderamt;
 		pFader->m_vecStartColor = pevTarget->rendercolor;
@@ -1899,8 +1662,8 @@ void CRenderFxManager::Affect( CBaseEntity *pTarget, BOOL bIsFirst, CBaseEntity 
 			pFader->m_vecOffsetColor = g_vecZero;
 		}
 
-		if ( pev->noise )
-			pFader->m_fOffsetScale = CalcLocus_Number(pActivator,STRING(pev->noise)) - pevTarget->scale;	//AJH Allows LR scale
+		if ( pev->scale )
+			pFader->m_fOffsetScale = pev->scale - pevTarget->scale;
 		else
 			pFader->m_fOffsetScale = 0;
 
@@ -2523,16 +2286,13 @@ void CBaseTrigger :: ToggleUse ( CBaseEntity *pActivator, CBaseEntity *pCaller, 
 	if (pev->solid == SOLID_NOT)
 	{// if the trigger is off, turn it on
 		pev->solid = SOLID_TRIGGER;
-		m_hActivator = pActivator; //AJH players can get frags for world kills
-
+		
 		// Force retouch
 		gpGlobals->force_retouch++;
 	}
 	else
 	{// turn the trigger off
 		pev->solid = SOLID_NOT;
-		m_hActivator = NULL; //AJH players can get frags for world kills
-
 	}
 	UTIL_SetOrigin( this, pev->origin );
 }
@@ -2614,7 +2374,7 @@ void CTriggerHurt :: Spawn( void )
 	if (m_bitsDamageInflict & DMG_RADIATION)
 	{
 		SetThink(&CTriggerHurt :: RadiationThink );
-		SetNextThink( RANDOM_FLOAT(0.0, 0.5) );
+		SetNextThink( RANDOM_FLOAT(0.0, 0.5) ); 
 	}
 
 	if ( FBitSet (pev->spawnflags, SF_TRIGGER_HURT_START_OFF) )// if flagged to Start Turned Off, make trigger nonsolid.
@@ -2691,7 +2451,7 @@ void CTriggerHurt :: HurtTouch ( CBaseEntity *pOther )
 
 
 
-	// If this is time_based damage (poison, radiation), override the pev->dmg with a
+	// If this is time_based damage (poison, radiation), override the pev->dmg with a 
 	// default for the given damage type.  Monsters only take time-based damage
 	// while touching the trigger.  Player continues taking damage for a while after
 	// leaving the trigger
@@ -2717,7 +2477,7 @@ void CTriggerHurt :: HurtTouch ( CBaseEntity *pOther )
 	if ( fldmg < 0 )
 		pOther->TakeHealth( -fldmg, m_bitsDamageInflict );
 	else
-		pOther->TakeDamage( pev, (m_hActivator)?m_hActivator->pev:pev, fldmg, m_bitsDamageInflict ); //AJH give frags to activator
+		pOther->TakeDamage( pev, pev, fldmg, m_bitsDamageInflict );
 
 	// Store pain time so we can get all of the other entities on this frame
 	pev->pain_finished = gpGlobals->time;
@@ -2725,11 +2485,11 @@ void CTriggerHurt :: HurtTouch ( CBaseEntity *pOther )
 	// Apply damage every half second
 	pev->dmgtime = gpGlobals->time + 0.5;// half second delay until this trigger can hurt toucher again
 
-
-
+  
+	
 	if ( pev->target )
 	{
-		// trigger has a target it wants to fire.
+		// trigger has a target it wants to fire. 
 		if ( pev->spawnflags & SF_TRIGGER_HURT_CLIENTONLYFIRE )
 		{
 			// if the toucher isn't a client, don't fire the target!
@@ -2763,7 +2523,7 @@ void CTriggerHurt :: RadiationThink( void )
 	Vector view_ofs;
 
 	// check to see if a player is in pvs
-	// if not, continue
+	// if not, continue	
 
 	// set origin to center of trigger so that this check works
 	origin = pev->origin;
@@ -2781,7 +2541,7 @@ void CTriggerHurt :: RadiationThink( void )
 
 	if (!FNullEnt(pentPlayer))
 	{
-
+ 
 		pPlayer = GetClassPtr( (CBasePlayer *)VARS(pentPlayer));
 
 		pevTarget = VARS(pentPlayer);
@@ -2790,13 +2550,13 @@ void CTriggerHurt :: RadiationThink( void )
 
 		vecSpot1 = (pev->absmin + pev->absmax) * 0.5;
 		vecSpot2 = (pevTarget->absmin + pevTarget->absmax) * 0.5;
-
+		
 		vecRange = vecSpot1 - vecSpot2;
 		flRange = vecRange.Length();
 
 		// if player's current geiger counter range is larger
 		// than range to this trigger hurt, reset player's
-		// geiger counter range
+		// geiger counter range 
 
 		if (pPlayer->m_flgeigerRange >= flRange)
 			pPlayer->m_flgeigerRange = flRange;
@@ -2849,7 +2609,7 @@ void CTriggerHevCharge :: ChargeTouch ( CBaseEntity *pOther )
 		return;
 
 	// check that it's a player with an HEV suit
-	if ( !pOther->IsPlayer() || !FBitSet(pOther->pev->weapons, 1<<WEAPON_SUIT) )
+	if ( !pOther->IsPlayer() || !FBitSet(pOther->pev->weapons, ITEM_SUIT) )
 		return;
 
 	//FIXME: add in the multiplayer fix, from trigger_hurt?
@@ -2902,10 +2662,10 @@ void CTriggerHevCharge :: AnnounceThink ( )
 	pct = (pct / 5);
 	if (pct > 0)
 	pct--;
-
+		
 	sprintf( szcharge,"!HEV_%1dP", pct );
 	//ALERT(at_debug, "Announce %s\n", szcharge);
-
+			
 	((CBasePlayer*)pPlayer)->SetSuitUpdate(szcharge, FALSE, SUIT_REPEAT_OK);
 }
 
@@ -2928,7 +2688,7 @@ LINK_ENTITY_TO_CLASS( trigger_monsterjump, CTriggerMonsterJump );
 void CTriggerMonsterJump :: Spawn ( void )
 {
 	SetMovedir ( pev );
-
+	
 	InitTrigger ();
 
 	DontThink();
@@ -2955,14 +2715,14 @@ void CTriggerMonsterJump :: Touch( CBaseEntity *pOther )
 {
 	entvars_t *pevOther = pOther->pev;
 
-	if ( !FBitSet ( pevOther->flags , FL_MONSTER ) )
+	if ( !FBitSet ( pevOther->flags , FL_MONSTER ) ) 
 	{// touched by a non-monster.
 		return;
 	}
 
 	pevOther->origin.z += 1;
-
-	if ( FBitSet ( pevOther->flags, FL_ONGROUND ) )
+	
+	if ( FBitSet ( pevOther->flags, FL_ONGROUND ) ) 
 	{// clear the onground so physics don't bitch
 		pevOther->flags &= ~FL_ONGROUND;
 	}
@@ -2973,65 +2733,114 @@ void CTriggerMonsterJump :: Touch( CBaseEntity *pOther )
 	SetNextThink( 0 );
 }
 
-
-// mp3 player, killar
-#define SF_REMOVE_ON_FIRE 1
+#define SF_REMOVE_ON_FIRE	1
+#define SF_LOOP_TRACK	2
 
 class CTargetFMODAudio : public CPointEntity
 {
 public:
-     void Spawn( void );
-
-     void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
-     BOOL m_bPlaying;
-	virtual int		Save( CSave &save );
-	virtual int		Restore( CRestore &restore );
-	static	TYPEDESCRIPTION m_SaveData[];
+	void Spawn( void );
+	void Activate( void );
+	void Think( void );
+	void DesiredAction( void );
+	void Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
+	BOOL m_bPlaying;
+	EHANDLE m_hActivator;
+	virtual int Save( CSave &save );
+	virtual int Restore( CRestore &restore );
+	static TYPEDESCRIPTION m_SaveData[];
 };
 
+LINK_ENTITY_TO_CLASS( ambient_music, CTargetFMODAudio );
 LINK_ENTITY_TO_CLASS( ambient_fmodstream, CTargetFMODAudio );
 LINK_ENTITY_TO_CLASS( trigger_mp3audio, CTargetFMODAudio );
 
 TYPEDESCRIPTION	CTargetFMODAudio::m_SaveData[] = 
 {
 	DEFINE_FIELD( CTargetFMODAudio, m_bPlaying, FIELD_BOOLEAN ),
+	DEFINE_FIELD( CTargetFMODAudio, m_hActivator, FIELD_EHANDLE ),
 };
 IMPLEMENT_SAVERESTORE( CTargetFMODAudio, CPointEntity );
 
 void CTargetFMODAudio :: Spawn( void )
 {
-     pev->solid = SOLID_NOT;
-     pev->movetype = MOVETYPE_NONE;
+	pev->solid = SOLID_NOT;
+	pev->movetype = MOVETYPE_NONE;
 
-     m_bPlaying = FALSE; // start out not playing
+	m_bPlaying = FALSE; // start out not playing
 }
 
-void CTargetFMODAudio::Use( CBaseEntity *pActivator, CBaseEntity *pCaller,
-     USE_TYPE useType, float value )
+void CTargetFMODAudio::Activate( void )
 {
-     char command[64];
-
-     if (!pActivator->IsPlayer()) // activator should be a player
-          return;
-
-     if (!m_bPlaying) // if we're not playing, start playing!
-          m_bPlaying = TRUE;
-     else
-     {     // if we're already playing, stop the mp3
-          m_bPlaying = FALSE;
-          CLIENT_COMMAND(pActivator->edict(), "stopaudio\n");
-          return;
-     }
-
-     // issue the play/loop command
-     sprintf(command, "playaudio %s\n", STRING(pev->message));
-
-     CLIENT_COMMAND(pActivator->edict(), command);
-
-     // remove if set
-     if (FBitSet(pev->spawnflags, SF_REMOVE_ON_FIRE))
-          UTIL_Remove(this);
+	CPointEntity::Activate();
+	UTIL_DesiredAction( this );
 }
+
+void CTargetFMODAudio::DesiredAction( void )
+{
+	if( m_bPlaying ) // run music on restore level 
+		pev->nextthink = gpGlobals->time + 1;
+}
+
+void CTargetFMODAudio::Think( void )
+{
+	int flags = 1;
+
+	if( m_hActivator == NULL ) return;
+
+	if( pev->spawnflags & SF_LOOP_TRACK )
+		flags |= 2; 
+
+	MESSAGE_BEGIN( MSG_ONE, gmsgFsound, NULL, m_hActivator->pev );
+		WRITE_STRING( STRING( pev->message ));
+		WRITE_BYTE( flags );
+	MESSAGE_END();
+}
+
+void CTargetFMODAudio::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
+{
+	if( gpGlobals->maxClients == 1 )
+		pActivator = UTIL_PlayerByIndex( 1 );
+
+	if( !pActivator || !pActivator->IsPlayer( )) // activator should be a player
+	{
+		return;
+	}
+
+	m_hActivator = pActivator;
+
+	if ( !m_bPlaying )
+	{
+		// if we're not playing, start playing!
+		m_bPlaying = TRUE;
+	}
+	else
+	{
+		// if we're already playing, stop the mp3
+		MESSAGE_BEGIN( MSG_ONE, gmsgFsound, NULL, pActivator->pev );
+			WRITE_STRING( STRING( pev->message ));
+			WRITE_BYTE( 0 );
+		MESSAGE_END();
+          	m_bPlaying = FALSE;
+		return;
+	}
+
+	int flags = 1;
+
+	// issue the play/loop command
+	if( pev->spawnflags & SF_LOOP_TRACK )
+		flags |= 2; 
+
+	MESSAGE_BEGIN( MSG_ONE, gmsgFsound, NULL, m_hActivator->pev );
+		WRITE_STRING( STRING( pev->message ));
+		WRITE_BYTE( flags );
+	MESSAGE_END();
+
+	// remove if set
+ 	if ( FBitSet( pev->spawnflags, SF_REMOVE_ON_FIRE ))
+		UTIL_Remove( this );
+}
+
 //=====================================
 //
 // trigger_cdaudio - starts/stops cd audio tracks
@@ -3072,13 +2881,13 @@ void CTriggerCDAudio::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TY
 	PlayTrack();
 }
 
-void PlayCDTrack( int iTrack, int iSong)
+void PlayCDTrack( int iTrack )
 {
 	edict_t *pClient;
-
-	// manually find the single player.
+	
+	// manually find the single player. 
 	pClient = g_engfuncs.pfnPEntityOfEntIndex( 1 );
-
+	
 	// Can't play if the client is not connected!
 	if ( !pClient )
 		return;
@@ -3091,16 +2900,13 @@ void PlayCDTrack( int iTrack, int iSong)
 
 	if ( iTrack == -1 )
 	{
-		CLIENT_COMMAND ( pClient, "stopaudio\n");
-		CLIENT_COMMAND ( pClient, "cd pause\n" );
+		CLIENT_COMMAND ( pClient, "cd pause\n");
 	}
 	else
 	{
 		char string [ 64 ];
 
-		if(iSong) sprintf( string, "playaudio %s\n", STRING(iSong) );
-		else	  sprintf( string, "cd play %3d\n", iTrack );
-
+		sprintf( string, "cd play %3d\n", iTrack );
 		CLIENT_COMMAND ( pClient, string);
 	}
 }
@@ -3109,8 +2915,8 @@ void PlayCDTrack( int iTrack, int iSong)
 // only plays for ONE client, so only use in single play!
 void CTriggerCDAudio :: PlayTrack( void )
 {
-	PlayCDTrack( (int)pev->health, (int)pev->message );
-
+	PlayCDTrack( (int)pev->health );
+	
 	SetTouch( NULL );
 	UTIL_Remove( this );
 }
@@ -3159,14 +2965,14 @@ void CTargetCDAudio::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 void CTargetCDAudio::Think( void )
 {
 	edict_t *pClient;
-
-	// manually find the single player.
+	
+	// manually find the single player. 
 	pClient = g_engfuncs.pfnPEntityOfEntIndex( 1 );
-
+	
 	// Can't play if the client is not connected!
 	if ( !pClient )
 		return;
-
+	
 	SetNextThink( 0.5 );
 
 	if ( (pClient->v.origin - pev->origin).Length() <= pev->scale )
@@ -3174,11 +2980,12 @@ void CTargetCDAudio::Think( void )
 
 }
 
-void CTargetCDAudio::Play( void )
-{
-	PlayCDTrack( (int)pev->health, (int) pev->message );
-	UTIL_Remove(this);
+void CTargetCDAudio::Play( void ) 
+{ 
+	PlayCDTrack( (int)pev->health );
+	UTIL_Remove(this); 
 }
+
 
 //=====================================
 //trigger_multiple
@@ -3229,7 +3036,7 @@ void CTriggerMultiple :: MultiTouch( CBaseEntity *pOther )
 				return;         // not facing the right way
 		}
 #endif
-
+		
 	ActivateMultiTrigger( pOther );
 }
 
@@ -3309,7 +3116,7 @@ LINK_ENTITY_TO_CLASS( trigger_once, CTriggerOnce );
 void CTriggerOnce::Spawn( void )
 {
 	m_flWait = -1;
-
+	
 	CTriggerMultiple :: Spawn();
 }
 
@@ -3333,7 +3140,6 @@ public:
 	// adds a new entry to the list
 	CInOutRegister *Add( CBaseEntity *pValue );
 	BOOL IsEmpty( void ) { return m_pNext?FALSE:TRUE; };
-	CBaseEntity* GetFirstEntityFrom( CBaseEntity* pStartEntity );
 
 	virtual int		Save( CSave &save );
 	virtual int		Restore( CRestore &restore );
@@ -3360,9 +3166,6 @@ public:
 
 	STATE GetState() { return m_pRegister->IsEmpty()?STATE_OFF:STATE_ON; }
 
-	//LRC 1.8 - let it act as an alias that refers to the entities within it
-	virtual CBaseEntity *FollowAlias( CBaseEntity *pFrom );
-
 	string_t m_iszAltTarget;
 	string_t m_iszBothTarget;
 	CInOutRegister *m_pRegister;
@@ -3371,7 +3174,7 @@ public:
 
 // CInOutRegister method bodies:
 
-TYPEDESCRIPTION	CInOutRegister::m_SaveData[] =
+TYPEDESCRIPTION	CInOutRegister::m_SaveData[] = 
 {
 	DEFINE_FIELD( CInOutRegister, m_pField, FIELD_CLASSPTR ),
 	DEFINE_FIELD( CInOutRegister, m_pNext, FIELD_CLASSPTR ),
@@ -3459,38 +3262,13 @@ CInOutRegister *CInOutRegister::Prune( void )
 	}
 }
 
-CBaseEntity *CInOutRegister::GetFirstEntityFrom( CBaseEntity* pStartEntity )
-{
-	CBaseEntity* result = NULL;
-	int startOffset;
-	if ( pStartEntity )
-	{
-		startOffset = OFFSET(pStartEntity->pev);
-	}
-	int resultOffset = 0;
-
-	for ( CInOutRegister* current = this; current != NULL; current = current->m_pNext )
-	{
-		if ( current->m_hValue != NULL )
-		{
-			int testOffset = OFFSET(current->m_hValue->pev);
-			if ( (pStartEntity == NULL || testOffset > startOffset) && ( result == NULL || resultOffset > testOffset ) )
-			{
-				result = current->m_hValue;
-				resultOffset = testOffset;
-			}
-		}
-	}
-
-	return result;
-}
 
 
 // CTriggerInOut method bodies:
 
 LINK_ENTITY_TO_CLASS( trigger_inout, CTriggerInOut );
 
-TYPEDESCRIPTION	CTriggerInOut::m_SaveData[] =
+TYPEDESCRIPTION	CTriggerInOut::m_SaveData[] = 
 {
 	DEFINE_FIELD( CTriggerInOut, m_iszAltTarget, FIELD_STRING ),
 	DEFINE_FIELD( CTriggerInOut, m_iszBothTarget, FIELD_STRING ),
@@ -3565,11 +3343,6 @@ void CTriggerInOut :: FireOnLeaving( CBaseEntity *pEnt )
 	}
 }
 
-CBaseEntity *CTriggerInOut::FollowAlias( CBaseEntity *pStartEntity )
-{
-	return m_pRegister->GetFirstEntityFrom( pStartEntity );
-}
-
 
 // ==============================
 // trigger_counter
@@ -3582,7 +3355,6 @@ public:
 	void Spawn( void );
 	void EXPORT CounterUse( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 	void KeyValue( KeyValueData *pkvd );
-	bool CalcNumber( CBaseEntity *pLocus, float* OUTresult );
 };
 LINK_ENTITY_TO_CLASS( trigger_counter, CTriggerCounter );
 
@@ -3615,7 +3387,7 @@ void CTriggerCounter::CounterUse( CBaseEntity *pActivator, CBaseEntity *pCaller,
 
 	if (m_cTriggersLeft < 0)
 		return;
-
+	
 	BOOL fTellActivator =
 		(FClassnameIs(m_hActivator->pev, "player") &&
 		!FBitSet(pev->spawnflags, SPAWNFLAG_NOMESSAGE));
@@ -3638,16 +3410,9 @@ void CTriggerCounter::CounterUse( CBaseEntity *pActivator, CBaseEntity *pCaller,
 	// !!!UNDONE: I don't think we want these Quakesque messages
 	if (fTellActivator)
 		ALERT(at_debug, "Sequence completed!");
-
+	
 	ActivateMultiTrigger( m_hActivator );
 }
-
-bool CTriggerCounter::CalcNumber( CBaseEntity *pLocus, float* OUTresult )
-{
-	*OUTresult = float(m_cTriggersLeft);
-	return true;
-}
-
 
 // ====================== TRIGGER_CHANGELEVEL ================================
 
@@ -3732,7 +3497,7 @@ public:
 LINK_ENTITY_TO_CLASS( trigger_changelevel, CChangeLevel );
 
 // Global Savedata for changelevel trigger
-TYPEDESCRIPTION	CChangeLevel::m_SaveData[] =
+TYPEDESCRIPTION	CChangeLevel::m_SaveData[] = 
 {
 	DEFINE_ARRAY( CChangeLevel, m_szMapName, FIELD_CHARACTER, cchMapNameMost ),
 	DEFINE_ARRAY( CChangeLevel, m_szLandmarkName, FIELD_CHARACTER, cchMapNameMost ),
@@ -3809,12 +3574,7 @@ void CChangeLevel :: Spawn( void )
 
 void CChangeLevel :: ExecuteChangeLevel( void )
 {
-	MESSAGE_BEGIN( MSG_ALL, SVC_CDTRACK );
-		WRITE_BYTE( 3 );
-		WRITE_BYTE( 3 );
-	MESSAGE_END();
-
-	MESSAGE_BEGIN(MSG_ALL, SVC_INTERMISSION);
+	MESSAGE_BEGIN( MSG_ALL, SVC_INTERMISSION );
 	MESSAGE_END();
 }
 
@@ -3841,7 +3601,7 @@ edict_t *CChangeLevel :: FindLandmark( const char *pLandmarkName )
 
 
 //=========================================================
-// CChangeLevel :: Use - allows level transitions to be
+// CChangeLevel :: Use - allows level transitions to be 
 // triggered by buttons, etc.
 //
 //=========================================================
@@ -3896,7 +3656,7 @@ void CChangeLevel :: ChangeLevelNow( CBaseEntity *pActivator )
 	SUB_UseTargets( pActivator, USE_TOGGLE, 0 );
 	st_szNextSpot[0] = 0;	// Init landmark to NULL
 
-	// look for a landmark entity
+	// look for a landmark entity		
 	pentLandmark = FindLandmark( m_szLandmarkName );
 	if ( !FNullEnt( pentLandmark ) )
 	{
@@ -3920,7 +3680,7 @@ void CChangeLevel :: TouchChangeLevel( CBaseEntity *pOther )
 }
 
 
-// Add a transition to the list, but ignore duplicates
+// Add a transition to the list, but ignore duplicates 
 // (a designer may have placed multiple trigger_changelevels with the same landmark)
 int CChangeLevel::AddTransitionToList( LEVELLIST *pLevelList, int listCount, const char *pMapName, const char *pLandmarkName, edict_t *pentLandmark )
 {
@@ -4005,7 +3765,7 @@ int CChangeLevel::ChangeList( LEVELLIST *pLevelList, int maxList )
 	while ( pChangelevel )
 	{
 		CChangeLevel *pTrigger;
-
+		
 		pTrigger = GetClassPtr((CChangeLevel *)pChangelevel->pev);
 		if ( pTrigger )
 		{
@@ -4100,10 +3860,10 @@ void NextLevel( void )
 {
 	CBaseEntity* pEnt;
 	CChangeLevel *pChange;
-
+	
 	// find a trigger_changelevel
 	pEnt = UTIL_FindEntityByClassname(NULL, "trigger_changelevel");
-
+	
 	// go back to start if no trigger_changelevel
 	if ( !pEnt )
 	{
@@ -4113,10 +3873,10 @@ void NextLevel( void )
 	}
 	else
 		pChange = GetClassPtr( (CChangeLevel *)pEnt->pev );
-
+	
 	strcpy(st_szNextMap, pChange->m_szMapName);
 	g_fGameOver = TRUE;
-
+	
 	pChange->SetNextThink( 0 );
 	if (pChange->m_fNextThink)
 	{
@@ -4124,8 +3884,6 @@ void NextLevel( void )
 		pChange->SetNextThink( 0.1 );
 	}
 }
-
-
 // ============================== LADDER =======================================
 
 #define SF_LADDER_VISIBLE	1
@@ -4255,36 +4013,38 @@ void CTriggerPush :: Touch( CBaseEntity *pOther )
 	Vector vecPush;
 	if (!FStringNull(m_iszPushVel))
 		vecPush = CalcLocus_Velocity( this, pOther, STRING(m_iszPushVel) );
-	else
-		vecPush = pev->movedir;
+	else vecPush = pev->movedir;
 
 	if (!FStringNull(m_iszPushSpeed))
-		vecPush = vecPush * CalcLocus_Number( pOther, STRING(m_iszPushSpeed) );
+		vecPush = vecPush * CalcLocus_Ratio( pOther, STRING(m_iszPushSpeed) );
+          
+	if (pev->speed) vecPush = vecPush * pev->speed;
+	else vecPush = vecPush * 100;
 
-	if (pev->speed)
-		vecPush = vecPush * pev->speed;
-	else
-		vecPush = vecPush * 100;
-
-	if ( pevToucher->solid != SOLID_NOT && pevToucher->solid != SOLID_BSP )
+	if ( pevToucher->solid != SOLID_NOT ) //&& pevToucher->solid != SOLID_BSP )
 	{
-		// Instant trigger, just transfer velocity and remove
-		if (FBitSet(pev->spawnflags, SF_TRIG_PUSH_ONCE))
+		if(pevToucher->movetype == MOVETYPE_PUSHSTEP) //pushable related code
 		{
 			pevToucher->velocity = pevToucher->velocity + vecPush;
+			
 			if ( pevToucher->velocity.z > 0 )
 				pevToucher->flags &= ~FL_ONGROUND;
-			UTIL_Remove( this );
+			pev->solid = SOLID_NOT; //push once. re-enable to affect again
 		}
-		else
-		{	// Push field, transfer to base velocity
+		else //other physobjects
+		{
+			// Push field, transfer to base velocity
 			if ( pevToucher->flags & FL_BASEVELOCITY )
 				vecPush = vecPush +  pevToucher->basevelocity;
 
 			pevToucher->basevelocity = vecPush;
-
 			pevToucher->flags |= FL_BASEVELOCITY;
-//			ALERT( at_console, "Vel %f, base %f\n", pevToucher->velocity.z, pevToucher->basevelocity.z );
+			//ALERT( at_console, "Vel %f, base %f\n", pevToucher->velocity.z, pevToucher->basevelocity.z );
+		}
+
+		if (FBitSet( pev->spawnflags, SF_TRIG_PUSH_ONCE ))
+		{
+			UTIL_Remove( this );
 		}
 	}
 }
@@ -4333,11 +4093,10 @@ void CTriggerBounce :: Touch( CBaseEntity *pOther )
 //===========================================================
 //LRC- trigger_onsight
 //===========================================================
-#define SF_ONSIGHT_NOLOS		0x00001
-#define SF_ONSIGHT_NOGLASS		0x00002
-#define SF_ONSIGHT_STATECHECK	0x00004 //AJH
-#define SF_ONSIGHT_ACTIVE		0x08000
-#define SF_ONSIGHT_DEMAND		0x10000
+#define SF_ONSIGHT_NOLOS   0x00001
+#define SF_ONSIGHT_NOGLASS 0x00002
+#define SF_ONSIGHT_ACTIVE  0x08000
+#define SF_ONSIGHT_DEMAND  0x10000
 
 class CTriggerOnSight : public CBaseDelay
 {
@@ -4408,82 +4167,8 @@ void CTriggerOnSight :: Think( void )
 	}
 }
 
-BOOL CTriggerOnSight :: VisionCheck( void )			//AJH modifed to check if multiple entities can see
+BOOL CTriggerOnSight :: VisionCheck( void )
 {													// and GetState check (stops dead monsters seeing)
-	CBaseEntity *pLooker;
-	if (pev->netname)
-	{
-		pLooker = UTIL_FindEntityByTargetname(NULL, STRING(pev->netname));
-		while (pLooker!=NULL){
-			if (!(pev->spawnflags & SF_ONSIGHT_STATECHECK) || (pev->spawnflags & SF_ONSIGHT_STATECHECK && pLooker->GetState()!=STATE_OFF)){
-
-				CBaseEntity *pSeen;
-				if (pev->message){
-					pSeen = UTIL_FindEntityByTargetname(NULL, STRING(pev->message));
-					if (!pSeen){
-						// must be a classname.
-						pSeen = UTIL_FindEntityByClassname(pSeen, STRING(pev->message));
-
-						while (pSeen != NULL){
-							if (CanSee(pLooker, pSeen))
-								return TRUE;
-							pSeen = UTIL_FindEntityByClassname(pSeen, STRING(pev->message));
-						}
-					}
-					else{
-						while (pSeen != NULL){
-							if (CanSee(pLooker, pSeen))
-								return TRUE;
-							pSeen = UTIL_FindEntityByTargetname(pSeen, STRING(pev->message));
-						}
-					}
-				}
-				else{
-					if (CanSee(pLooker, this))
-						return TRUE;
-				}
-			}
-			pLooker = UTIL_FindEntityByTargetname(pLooker, STRING(pev->netname));
-		}
-		return FALSE;
-	}
-	else
-	{
-		pLooker = UTIL_FindEntityByClassname(NULL, "player");
-		if (!pLooker)
-		{
-			ALERT(at_error, "trigger_onsight can't find player!?\n");
-			return FALSE;
-		}
-		CBaseEntity *pSeen;
-		if (pev->message)
-			pSeen = UTIL_FindEntityByTargetname(NULL, STRING(pev->message));
-		else
-			return CanSee(pLooker, this);
-
-		if (!pSeen){
-		// must be a classname.
-			pSeen = UTIL_FindEntityByClassname(pSeen, STRING(pev->message));
-			while (pSeen != NULL){
-				if (CanSee(pLooker, pSeen))
-					return TRUE;
-				pSeen = UTIL_FindEntityByClassname(pSeen, STRING(pev->message));
-			}
-			return FALSE;
-		}
-		else{
-			while (pSeen != NULL){
-				if (CanSee(pLooker, pSeen))
-					return TRUE;
-				pSeen = UTIL_FindEntityByTargetname(pSeen, STRING(pev->message));
-			}
-			return FALSE;
-		}
-	}
-}
-
-/*BOOL CTriggerOnSight :: VisionCheck( void )
-{
 	CBaseEntity *pLooker;
 	if (pev->netname)
 	{
@@ -4529,7 +4214,7 @@ BOOL CTriggerOnSight :: VisionCheck( void )			//AJH modifed to check if multiple
 		}
 		return FALSE;
 	}
-}*/
+}
 
 // by the criteria we're using, can the Looker see the Seen entity?
 BOOL CTriggerOnSight :: CanSee(CBaseEntity *pLooker, CBaseEntity *pSeen)
@@ -4639,7 +4324,7 @@ void CTriggerTeleport :: TeleportTouch( CBaseEntity *pOther )
 			{
 //				ALERT(at_console, "v_angle = %f %f %f\n", pOther->pev->v_angle.x, pOther->pev->v_angle.y, pOther->pev->v_angle.z);
 				pOther->pev->angles.x = pOther->pev->v_angle.x;
-//				pOther->pev->v_angle.y += ydiff;
+//				pOther->pev->v_angles.y += ydiff;
 				pOther->pev->fixangle = TRUE;
 			}
 
@@ -4728,7 +4413,7 @@ void CTriggerSave::SaveTouch( CBaseEntity *pOther )
 	// Only save on clients
 	if ( !pOther->IsPlayer() )
 		return;
-
+    
 	SetTouch( NULL );
 	UTIL_Remove( this );
 	SERVER_COMMAND( "autosave\n" );
@@ -4894,9 +4579,6 @@ void CTriggerSetPatrol::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_
 //LRC- trigger_motion
 //===========================================================
 #define SF_MOTION_DEBUG 1
-#define SF_MOTION_SWAPXY 2 // MJB Swap X and Y values
-#define SF_MOTION_SWAPYZ 4 // MJB Swap Y and Z values
-#define SF_MOTION_SWAPZX 8 // MJB Swap Z and X values
 
 class CTriggerMotion : public CPointEntity
 {
@@ -5026,7 +4708,7 @@ void CTriggerMotion::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 				ALERT(at_debug, "to %f %f %f\n", pTarget->pev->angles.x, pTarget->pev->angles.y, pTarget->pev->angles.z);
 			break;
 		case 1:
-			vecTemp = CalcLocus_Velocity( this, pActivator, STRING(m_iszAngles) ); //LRC 1.8 - was using m_iszVelocity by mistake
+			vecTemp = CalcLocus_Velocity( this, pActivator, STRING(m_iszVelocity) );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Rotate angles from %f %f %f ", pTarget->pev->angles.x, pTarget->pev->angles.y, pTarget->pev->angles.z);
 			pTarget->pev->angles = pTarget->pev->angles + UTIL_VecToAngles( vecTemp );
@@ -5034,7 +4716,7 @@ void CTriggerMotion::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 				ALERT(at_debug, "to %f %f %f\n", pTarget->pev->angles.x, pTarget->pev->angles.y, pTarget->pev->angles.z);
 			break;
 		case 2:
-			vecTemp = CalcLocus_PYR( this, pActivator, STRING(m_iszAngles) ); //LRC 1.8
+			UTIL_StringToRandomVector( vecTemp, STRING(m_iszAngles) );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Rotate angles from %f %f %f ", pTarget->pev->angles.x, pTarget->pev->angles.y, pTarget->pev->angles.z);
 			pTarget->pev->angles = pTarget->pev->angles + vecTemp;
@@ -5074,7 +4756,7 @@ void CTriggerMotion::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 				ALERT(at_debug, "to %f %f %f\n", pTarget->pev->velocity.x, pTarget->pev->velocity.y, pTarget->pev->velocity.z);
 			break;
 		case 3:
-			vecTemp = CalcLocus_PYR( this, pActivator, STRING(m_iszVelocity) );
+			UTIL_StringToRandomVector( vecTemp, STRING(m_iszVelocity) );
 			vecVelAngles = vecTemp + UTIL_VecToAngles( pTarget->pev->velocity );
 			UTIL_MakeVectors( vecVelAngles );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
@@ -5087,12 +4769,12 @@ void CTriggerMotion::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 		}
 	}
 
-	if(m_iszAVelocity)	//AJH (you forgot to add this Laurie!!)
+	if( m_iszAVelocity )
 	{
 		switch (m_iAVelMode)
 		{
 		case 0:
-			vecTemp = CalcLocus_PYR( this, pActivator, STRING(m_iszAVelocity) );
+			UTIL_StringToRandomVector( vecTemp, STRING(m_iszAVelocity) );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Set avelocity from %f %f %f ", pTarget->pev->avelocity.x, pTarget->pev->avelocity.y, pTarget->pev->avelocity.z);
 			pTarget->pev->avelocity = vecTemp;
@@ -5100,7 +4782,7 @@ void CTriggerMotion::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 				ALERT(at_debug, "to %f %f %f\n", pTarget->pev->avelocity.x, pTarget->pev->avelocity.y, pTarget->pev->avelocity.z);
 			break;
 		case 1:
-			vecTemp = CalcLocus_PYR( this, pActivator, STRING(m_iszAVelocity) );
+			UTIL_StringToRandomVector( vecTemp, STRING(m_iszAVelocity) );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Set avelocity from %f %f %f ", pTarget->pev->avelocity.x, pTarget->pev->avelocity.y, pTarget->pev->avelocity.z);
 			pTarget->pev->avelocity = pTarget->pev->avelocity + vecTemp;
@@ -5108,39 +4790,29 @@ void CTriggerMotion::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 				ALERT(at_debug, "to %f %f %f\n", pTarget->pev->avelocity.x, pTarget->pev->avelocity.y, pTarget->pev->avelocity.z);
 			break;
 		}
-	}//AJH
+	}
 }
-
 
 //===========================================================
 //LRC- motion_manager
 //===========================================================
-#define MT_AFFECT_X 1
-#define MT_AFFECT_Y 2
-#define MT_AFFECT_Z 4
-#define SF_MTHREAD_STEP 16 // AJH / MJB - 'step' next frame only.
-
-class CMotionThread : public CPointEntity
+class CMotionThread : public CBaseEntity
 {
 public:
-	void Spawn( void ); //AJH
 	void Think( void );
 
-	virtual int		Save( CSave &save );
-	virtual int		Restore( CRestore &restore );
+	virtual int Save( CSave &save );
+	virtual int Restore( CRestore &restore );
 	static	TYPEDESCRIPTION m_SaveData[];
 
 	int m_iszPosition;
 	int m_iPosMode;
-	int m_iPosAxis;		//AJH axis to affect
 	int m_iszFacing;
 	int m_iFaceMode;
-	int m_iFaceAxis;	//AJH axis to affect
 	EHANDLE m_hLocus;
 	EHANDLE m_hTarget;
 };
-
-LINK_ENTITY_TO_CLASS( motion_thread, CPointEntity );
+LINK_ENTITY_TO_CLASS( motion_thread, CMotionThread );
 
 TYPEDESCRIPTION	CMotionThread::m_SaveData[] =
 {
@@ -5150,33 +4822,18 @@ TYPEDESCRIPTION	CMotionThread::m_SaveData[] =
 	DEFINE_FIELD( CMotionThread, m_iFaceMode, FIELD_INTEGER ),
 	DEFINE_FIELD( CMotionThread, m_hLocus, FIELD_EHANDLE ),
 	DEFINE_FIELD( CMotionThread, m_hTarget, FIELD_EHANDLE ),
-	DEFINE_FIELD( CMotionThread, m_iPosAxis, FIELD_INTEGER ),	//AJH axis to affect
-	DEFINE_FIELD( CMotionThread, m_iFaceAxis, FIELD_INTEGER ),	//AJH axis to affect
-};
-
-IMPLEMENT_SAVERESTORE(CMotionThread,CPointEntity);
-
-void CMotionThread::Spawn( void ) //AJH
-{
-	pev->classname = MAKE_STRING("motion_thread"); //We need this for save/restore to work
-}
+};IMPLEMENT_SAVERESTORE(CMotionThread, CBaseEntity);
 
 void CMotionThread::Think( void )
 {
-	//SetBits(pev->spawnflags, SF_MOTION_DEBUG);
 	if (m_hLocus == NULL || m_hTarget == NULL)
-	{	
+	{
 		if (pev->spawnflags & SF_MOTION_DEBUG)
 			ALERT(at_debug, "motion_thread expires\n");
 		SetThink(&CMotionThread:: SUB_Remove );
 		SetNextThink( 0.1 );
 		return;
 	}
-	else if (pev->spawnflags & SF_MTHREAD_STEP) { // MJB / AJH - stepped motion_management
-			DontThink();
-			if (pev->spawnflags & SF_MOTION_DEBUG)
-				ALERT(at_console,"Stepped.\n");
-		}
 	else
 	{
 		SetNextThink( 0 ); // think every frame
@@ -5194,111 +4851,37 @@ void CMotionThread::Think( void )
 		case 0: // set position
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Set origin from %f %f %f ", m_hTarget->pev->origin.x, m_hTarget->pev->origin.y, m_hTarget->pev->origin.z);
-
-			if (!m_iPosAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_AssignOrigin(m_hTarget, CalcLocus_Position( this, m_hLocus, STRING(m_iszPosition) ));
-			}else{	//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp = CalcLocus_Position( this, m_hLocus, STRING(m_iszPosition));
-				Vector tmp2 = m_hTarget->pev->origin;
-				if(m_iPosAxis&MT_AFFECT_X)
-					tmp2.x = tmp.x;
-				if(m_iPosAxis&MT_AFFECT_Y)
-					tmp2.y = tmp.y;
-				if(m_iPosAxis&MT_AFFECT_Z)
-					tmp2.z = tmp.z;
-				UTIL_AssignOrigin(m_hTarget,tmp2);
-			}
-
+			UTIL_AssignOrigin(m_hTarget, CalcLocus_Position( this, m_hLocus, STRING(m_iszPosition) ));
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->origin.x, m_hTarget->pev->origin.y, m_hTarget->pev->origin.z);
 			m_hTarget->pev->flags &= ~FL_ONGROUND;
 			break;
-
 		case 1: // offset position (= fake velocity)
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Offset origin from %f %f %f ", m_hTarget->pev->origin.x, m_hTarget->pev->origin.y, m_hTarget->pev->origin.z);
-
-			if (!m_iPosAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_AssignOrigin(m_hTarget, m_hTarget->pev->origin + gpGlobals->frametime * CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) ));
-			}else{	//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp = m_hTarget->pev->origin + gpGlobals->frametime * CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) );
-				Vector tmp2 = m_hTarget->pev->origin;
-				if(m_iPosAxis&MT_AFFECT_X)
-					tmp2.x = tmp.x;
-				if(m_iPosAxis&MT_AFFECT_Y)
-					tmp2.y = tmp.y;
-				if(m_iPosAxis&MT_AFFECT_Z)
-					tmp2.z = tmp.z;
-				UTIL_AssignOrigin(m_hTarget,tmp2);
-			}
-
+			UTIL_AssignOrigin(m_hTarget, m_hTarget->pev->origin + gpGlobals->frametime * CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) ));
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->origin.x, m_hTarget->pev->origin.y, m_hTarget->pev->origin.z);
 			m_hTarget->pev->flags &= ~FL_ONGROUND;
 			break;
-
 		case 2: // set velocity
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Set velocity from %f %f %f ", m_hTarget->pev->velocity.x, m_hTarget->pev->velocity.y, m_hTarget->pev->velocity.z);
-
-			if (!m_iPosAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_SetVelocity(m_hTarget, CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) ));
-			}else{	//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp =  CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) );
-				Vector tmp2 = m_hTarget->pev->velocity;
-				if(m_iPosAxis&MT_AFFECT_X)
-					tmp2.x = tmp.x;
-				if(m_iPosAxis&MT_AFFECT_Y)
-					tmp2.y = tmp.y;
-				if(m_iPosAxis&MT_AFFECT_Z)
-					tmp2.z = tmp.z;
-				UTIL_SetVelocity(m_hTarget,tmp2);
-			}
-
+			UTIL_SetVelocity(m_hTarget, CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) ));
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->velocity.x, m_hTarget->pev->velocity.y, m_hTarget->pev->velocity.z);
 			break;
-
 		case 3: // accelerate
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Accelerate from %f %f %f ", m_hTarget->pev->velocity.x, m_hTarget->pev->velocity.y, m_hTarget->pev->velocity.z);
-
-			if (!m_iPosAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_SetVelocity(m_hTarget, m_hTarget->pev->velocity + gpGlobals->frametime * CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) ));
-			}else{	//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp =  m_hTarget->pev->velocity + gpGlobals->frametime * CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition));
-				Vector tmp2 = m_hTarget->pev->velocity;
-				if(m_iPosAxis&MT_AFFECT_X)
-					tmp2.x = tmp.x;
-				if(m_iPosAxis&MT_AFFECT_Y)
-					tmp2.y = tmp.y;
-				if(m_iPosAxis&MT_AFFECT_Z)
-					tmp2.z = tmp.z;
-				UTIL_SetVelocity(m_hTarget,tmp2);
-			}
-
+			UTIL_SetVelocity(m_hTarget, m_hTarget->pev->velocity + gpGlobals->frametime * CalcLocus_Velocity( this, m_hLocus, STRING(m_iszPosition) ));
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->velocity.x, m_hTarget->pev->velocity.y, m_hTarget->pev->velocity.z);
 			break;
-
 		case 4: // follow position
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Set velocity (path) from %f %f %f ", m_hTarget->pev->velocity.x, m_hTarget->pev->velocity.y, m_hTarget->pev->velocity.z);
-
-			if (!m_iPosAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_SetVelocity(m_hTarget, CalcLocus_Position( this, m_hLocus, STRING(m_iszPosition) ) - m_hTarget->pev->origin);
-			}else{	//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp =  CalcLocus_Position( this, m_hLocus, STRING(m_iszPosition) ) - m_hTarget->pev->origin;
-				Vector tmp2 = m_hTarget->pev->velocity;
-				if(m_iPosAxis&MT_AFFECT_X)
-					tmp2.x = tmp.x;
-				if(m_iPosAxis&MT_AFFECT_Y)
-					tmp2.y = tmp.y;
-				if(m_iPosAxis&MT_AFFECT_Z)
-					tmp2.z = tmp.z;
-				UTIL_SetVelocity(m_hTarget,tmp2);
-			}
-
+			UTIL_SetVelocity(m_hTarget, CalcLocus_Position( this, m_hLocus, STRING(m_iszPosition) ) - m_hTarget->pev->origin);
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->velocity.x, m_hTarget->pev->velocity.y, m_hTarget->pev->velocity.z);
 			break;
@@ -5317,40 +4900,7 @@ void CMotionThread::Think( void )
 			{
 				if (pev->spawnflags & SF_MOTION_DEBUG)
 					ALERT(at_debug, "DEBUG: Set angles from %f %f %f ", m_hTarget->pev->angles.x, m_hTarget->pev->angles.y, m_hTarget->pev->angles.z);
-
-				if (!m_iFaceAxis){	//AJH Default Behaviour (ORIGINAL)
-					UTIL_SetAngles(m_hTarget, UTIL_VecToAngles( vecTemp ));
-				}else{//AJH Affect this axis behaviour (NEW SOHL 1.4)
-					Vector tmp = UTIL_VecToAngles( vecTemp );
-					Vector tmp2 = m_hTarget->pev->angles;
-					
-					if(pev->spawnflags & SF_MOTION_SWAPXY) { // MJB swap Pitch/Yaw axes
-						ALERT(at_debug,"Swapping Pitch = %f, Yaw = %f\n", tmp.x,tmp.y);
-						float swaptemp = tmp.x;
-						tmp.x = tmp.y;
-						tmp.y = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPYZ) { // MJB swap Yaw/Roll axes
-						ALERT(at_debug,"Swapping Yaw = %f, Roll = %f\n", tmp.y,tmp.z);
-						float swaptemp = tmp.y;
-						tmp.y = tmp.z;
-						tmp.z = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPZX) { // MJB swap Roll/Pitch axes
-						ALERT(at_debug,"Swapping Roll = %f, Pitch = %f\n", tmp.z,tmp.x);
-						float swaptemp = tmp.z;
-						tmp.z = tmp.x;
-						tmp.x = swaptemp;
-					}
-					
-					if(m_iFaceAxis&MT_AFFECT_X){tmp2.x = tmp.x;}
-					if(m_iFaceAxis&MT_AFFECT_Y){tmp2.y = tmp.y;}
-					if(m_iFaceAxis&MT_AFFECT_Z){tmp2.z = tmp.z;}
-					UTIL_SetAngles(m_hTarget,tmp2);
-				}
-
+				UTIL_SetAngles(m_hTarget, UTIL_VecToAngles( vecTemp ));
 				if (pev->spawnflags & SF_MOTION_DEBUG)
 					ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->angles.x, m_hTarget->pev->angles.y, m_hTarget->pev->angles.z);
 			}
@@ -5359,47 +4909,13 @@ void CMotionThread::Think( void )
 				ALERT(at_debug, "Zero velocity, don't change angles\n");
 			}
 			break;
-
 		case 1: // offset angles (= fake avelocity)
 			vecTemp = CalcLocus_Velocity( this, m_hLocus, STRING(m_iszFacing) );
 			if (vecTemp != g_vecZero) // if the vector is 0 0 0, don't use it
 			{
 				if (pev->spawnflags & SF_MOTION_DEBUG)
 					ALERT(at_debug, "DEBUG: Offset angles from %f %f %f ", m_hTarget->pev->angles.x, m_hTarget->pev->angles.y, m_hTarget->pev->angles.z);
-
-				if (!m_iFaceAxis){	//AJH Default Behaviour (ORIGINAL)
-					UTIL_SetAngles(m_hTarget, m_hTarget->pev->angles + gpGlobals->frametime * UTIL_VecToAngles( vecTemp ));
-				}else{//AJH Affect this axis behaviour (NEW SOHL 1.4)
-					Vector tmp = m_hTarget->pev->angles + gpGlobals->frametime * UTIL_VecToAngles( vecTemp );
-					Vector tmp2 = m_hTarget->pev->angles;
-					
-					if(pev->spawnflags & SF_MOTION_SWAPXY) { // MJB swap Pitch/Yaw axes
-						ALERT(at_debug,"Swapping Pitch = %f, Yaw = %f\n", tmp.x,tmp.y);
-						float swaptemp = tmp.x;
-						tmp.x = tmp.y;
-						tmp.y = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPYZ) { // MJB swap Yaw/Roll axes
-						ALERT(at_debug,"Swapping Yaw = %f, Roll = %f\n", tmp.y,tmp.z);
-						float swaptemp = tmp.y;
-						tmp.y = tmp.z;
-						tmp.z = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPZX) { // MJB swap Roll/Pitch axes
-						ALERT(at_debug,"Swapping Roll = %f, Pitch = %f\n", tmp.z,tmp.x);
-						float swaptemp = tmp.z;
-						tmp.z = tmp.x;
-						tmp.x = swaptemp;
-					}
-					
-					if(m_iFaceAxis&MT_AFFECT_X){tmp2.x = tmp.x;}
-					if(m_iFaceAxis&MT_AFFECT_Y){tmp2.y = tmp.y;}
-					if(m_iFaceAxis&MT_AFFECT_Z){tmp2.z = tmp.z;}
-					UTIL_SetAngles(m_hTarget,tmp2);
-				}
-
+				UTIL_SetAngles(m_hTarget, m_hTarget->pev->angles + gpGlobals->frametime * UTIL_VecToAngles( vecTemp ));
 				if (pev->spawnflags & SF_MOTION_DEBUG)
 					ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->angles.x, m_hTarget->pev->angles.y, m_hTarget->pev->angles.z);
 			}
@@ -5408,86 +4924,19 @@ void CMotionThread::Think( void )
 				ALERT(at_debug, "Zero velocity, don't change angles\n");
 			}
 			break;
-
 		case 2: // offset angles (= fake avelocity)
-			vecVelAngles = CalcLocus_PYR( this, m_hLocus, STRING(m_iszFacing) );
+			UTIL_StringToRandomVector( vecVelAngles, STRING(m_iszFacing) );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Rotate angles from %f %f %f ", m_hTarget->pev->angles.x, m_hTarget->pev->angles.y, m_hTarget->pev->angles.z);
-
-			if (!m_iFaceAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_SetAngles(m_hTarget, m_hTarget->pev->angles + gpGlobals->frametime * vecVelAngles);
-			}else{//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp = m_hTarget->pev->angles + gpGlobals->frametime * vecVelAngles;
-				Vector tmp2 = m_hTarget->pev->angles;
-				
-				if(pev->spawnflags & SF_MOTION_SWAPXY) { // MJB swap Pitch/Yaw axes
-						ALERT(at_debug,"Swapping Pitch = %f, Yaw = %f\n", tmp.x,tmp.y);
-						float swaptemp = tmp.x;
-						tmp.x = tmp.y;
-						tmp.y = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPYZ) { // MJB swap Yaw/Roll axes
-						ALERT(at_debug,"Swapping Yaw = %f, Roll = %f\n", tmp.y,tmp.z);
-						float swaptemp = tmp.y;
-						tmp.y = tmp.z;
-						tmp.z = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPZX) { // MJB swap Roll/Pitch axes
-						ALERT(at_debug,"Swapping Roll = %f, Pitch = %f\n", tmp.z,tmp.x);
-						float swaptemp = tmp.z;
-						tmp.z = tmp.x;
-						tmp.x = swaptemp;
-					}
-				
-					if(m_iFaceAxis&MT_AFFECT_X){tmp2.x = tmp.x;}
-					if(m_iFaceAxis&MT_AFFECT_Y){tmp2.y = tmp.y;}
-					if(m_iFaceAxis&MT_AFFECT_Z){tmp2.z = tmp.z;}
-					UTIL_SetAngles(m_hTarget,tmp2);
-			}
-
+			UTIL_SetAngles(m_hTarget, m_hTarget->pev->angles + gpGlobals->frametime * vecVelAngles);
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->angles.x, m_hTarget->pev->angles.y, m_hTarget->pev->angles.z);
 			break;
-
 		case 3: // set avelocity
-			vecVelAngles = CalcLocus_PYR( this, m_hLocus, STRING(m_iszFacing) );
+			UTIL_StringToRandomVector( vecTemp, STRING(m_iszFacing) );
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "DEBUG: Set avelocity from %f %f %f ", m_hTarget->pev->avelocity.x, m_hTarget->pev->avelocity.y, m_hTarget->pev->avelocity.z);
-
-			if (!m_iFaceAxis){	//AJH Default Behaviour (ORIGINAL)
-				UTIL_SetAvelocity(m_hTarget, vecTemp);
-			}else{//AJH Affect this axis behaviour (NEW SOHL 1.4)
-				Vector tmp2 = m_hTarget->pev->angles;
-				
-				if(pev->spawnflags & SF_MOTION_SWAPXY) { // MJB swap Pitch/Yaw axes
-						ALERT(at_debug,"Swapping Pitch = %f, Yaw = %f\n", tmp2.x,tmp2.y);
-						float swaptemp = tmp2.x;
-						tmp2.x = tmp2.y;
-						tmp2.y = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPYZ) { // MJB swap Yaw/Roll axes
-						ALERT(at_debug,"Swapping Yaw = %f, Roll = %f\n", tmp2.y,tmp2.z);
-						float swaptemp = tmp2.y;
-						tmp2.y = tmp2.z;
-						tmp2.z = swaptemp;
-					}
-					
-					if(pev->spawnflags & SF_MOTION_SWAPZX) { // MJB swap Roll/Pitch axes
-						ALERT(at_debug,"Swapping Roll = %f, Pitch = %f\n", tmp2.z,tmp2.x);
-						float swaptemp = tmp2.z;
-						tmp2.z = tmp2.x;
-						tmp2.x = swaptemp;
-					}
-				
-					if(m_iFaceAxis&MT_AFFECT_X){tmp2.x = vecTemp.x;}
-					if(m_iFaceAxis&MT_AFFECT_Y){tmp2.y = vecTemp.y;}
-					if(m_iFaceAxis&MT_AFFECT_Z){tmp2.z = vecTemp.z;}
-					UTIL_SetAvelocity(m_hTarget,tmp2);
-				}
-
+			UTIL_SetAvelocity(m_hTarget, vecTemp);
 			if (pev->spawnflags & SF_MOTION_DEBUG)
 				ALERT(at_debug, "to %f %f %f\n", m_hTarget->pev->avelocity.x, m_hTarget->pev->avelocity.y, m_hTarget->pev->avelocity.z);
 			break;
@@ -5510,23 +4959,17 @@ public:
 
 	int m_iszPosition;
 	int m_iPosMode;
-	int m_iPosAxis;		//AJH
 	int m_iszFacing;
 	int m_iFaceMode;
-	int m_iFaceAxis;	//AJH
-	CMotionThread *pThread;
 };
 LINK_ENTITY_TO_CLASS( motion_manager, CMotionManager );
 
-TYPEDESCRIPTION	CMotionManager::m_SaveData[] =
+TYPEDESCRIPTION	CMotionManager::m_SaveData[] = 
 {
 	DEFINE_FIELD( CMotionManager, m_iszPosition, FIELD_STRING ),
 	DEFINE_FIELD( CMotionManager, m_iPosMode, FIELD_INTEGER ),
 	DEFINE_FIELD( CMotionManager, m_iszFacing, FIELD_STRING ),
 	DEFINE_FIELD( CMotionManager, m_iFaceMode, FIELD_INTEGER ),
-	DEFINE_FIELD( CMotionManager, m_iPosAxis, FIELD_INTEGER ),//AJH
-	DEFINE_FIELD( CMotionManager, m_iFaceAxis, FIELD_INTEGER ),//AJH
-	DEFINE_FIELD( CMotionManager, pThread, FIELD_CLASSPTR ),//AJH
 };
 
 IMPLEMENT_SAVERESTORE(CMotionManager,CPointEntity);
@@ -5543,11 +4986,6 @@ void CMotionManager::KeyValue( KeyValueData *pkvd )
 		m_iPosMode = atoi( pkvd->szValue );
 		pkvd->fHandled = TRUE;
 	}
-	else if (FStrEq(pkvd->szKeyName, "m_iPosAxis"))//AJH
-	{
-		m_iPosAxis = atoi( pkvd->szValue );
-		pkvd->fHandled = TRUE;
-	}
 	else if (FStrEq(pkvd->szKeyName, "m_iszFacing"))
 	{
 		m_iszFacing = ALLOC_STRING( pkvd->szValue );
@@ -5558,69 +4996,49 @@ void CMotionManager::KeyValue( KeyValueData *pkvd )
 		m_iFaceMode = atoi( pkvd->szValue );
 		pkvd->fHandled = TRUE;
 	}
-	else if (FStrEq(pkvd->szKeyName, "m_iFaceAxis"))//AJH
-	{
-		m_iFaceAxis = atoi( pkvd->szValue );
-		pkvd->fHandled = TRUE;
-	}
 	else
 		CPointEntity::KeyValue( pkvd );
 }
 
 void CMotionManager::PostSpawn( void )
 {
-	pThread= GetClassPtr( (CMotionThread*)NULL );
 	if (FStringNull(pev->targetname))
 		Use( this, this, USE_ON, 0 );
-
 }
 
 void CMotionManager::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
 {
-	
-	if(useType==USE_OFF){		//AJH to allow motion_managers to turn off
-		if (pThread!=NULL)		//
-		pThread->m_hLocus=NULL;	//
-	}else{
-
-		if (pThread==NULL) //AJH we shouldn't need this but for some reason the pointer is ALWAYS NULL after save/restore.
+	CBaseEntity *pTarget = pActivator;
+	if (pev->target)
+	{
+		pTarget = UTIL_FindEntityByTargetname(NULL, STRING(pev->target), pActivator);
+		if (pTarget == NULL)
+			ALERT(at_error, "motion_manager \"%s\" can't find entity \"%s\" to affect\n", STRING(pev->targetname), STRING(pev->target));
+		else
 		{
-			pThread= GetClassPtr( (CMotionThread*)NULL );
-			//ALERT(at_debug,"Motion_manager motion thread pointer is NULL, Creating new motionthread.\n");
-		}
-		CBaseEntity *pTarget = pActivator;
-		if (pev->target){
-			pTarget = UTIL_FindEntityByTargetname(NULL, STRING(pev->target), pActivator);
-			if (pTarget == NULL)
-				ALERT(at_error, "motion_manager \"%s\" can't find entity \"%s\" to affect\n", STRING(pev->targetname), STRING(pev->target));
-			else{
-				do{
-					Affect( pTarget, pActivator );
-					pTarget = UTIL_FindEntityByTargetname(pTarget, STRING(pev->target), pActivator);
-				} while ( pTarget );
-			}
+			do
+			{
+				Affect( pTarget, pActivator );
+				pTarget = UTIL_FindEntityByTargetname(pTarget, STRING(pev->target), pActivator);
+			} while ( pTarget );
 		}
 	}
 }
 
 void CMotionManager::Affect( CBaseEntity *pTarget, CBaseEntity *pActivator )
 {
-	if (pev->spawnflags & SF_MOTION_DEBUG)
+	if ( pev->spawnflags & SF_MOTION_DEBUG )
 		ALERT(at_debug, "DEBUG: Creating MotionThread for %s \"%s\"\n", STRING(pTarget->pev->classname), STRING(pTarget->pev->targetname));
 
-	if (pThread == NULL)
-	{
-		ALERT(at_debug,"Motion_manager motion thread pointer is NULL!!\n");
-		return; //error?
-	}
+	CMotionThread *pThread = GetClassPtr( (CMotionThread*)NULL );
+	if ( pThread == NULL ) return; //error?
+	pThread->pev->classname = MAKE_STRING( "motion_thread" );	// allow save\restore
 	pThread->m_hLocus = pActivator;
 	pThread->m_hTarget = pTarget;
 	pThread->m_iszPosition = m_iszPosition;
 	pThread->m_iPosMode = m_iPosMode;
-	pThread->m_iPosAxis = m_iPosAxis;	//AJH
 	pThread->m_iszFacing = m_iszFacing;
 	pThread->m_iFaceMode = m_iFaceMode;
-	pThread->m_iFaceAxis = m_iFaceAxis;	//AJH
 	pThread->pev->spawnflags = pev->spawnflags;
 	pThread->SetNextThink( 0 );
 }
@@ -5761,29 +5179,6 @@ void CTriggerCommand::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TY
 	if (pev->netname)
 	{
 		sprintf( szCommand, "%s\n", STRING(pev->netname) );
-
-		// trigger_command really needs to be able to use " marks, and map tools can't handle those in entity values.
-		// so we convert backtick-quotes into " quotes.
-		char* read = szCommand;
-		char* write = szCommand;
-		while( *read )
-		{
-			if ( read[0] == '`' && read[1] == '`' )
-			{
-				// found one
-				read++;
-				write[0] = '\"';
-			}
-			else //if ( read != write ) // could check this, but probably faster without
-			{
-				write[0] = read[0];
-			}
-
-			read++;
-			write++;
-		}
-		write[0] = 0;
-
 		SERVER_COMMAND( szCommand );
 	}
 }
@@ -5857,10 +5252,10 @@ void CTriggerChangeCVar::Think( void )
 
 
 
-#define SF_CAMERA_PLAYER_POSITION	1
+#define SF_CAMERA_PLAYER_POSITION		1
 #define SF_CAMERA_PLAYER_TARGET		2
-#define SF_CAMERA_PLAYER_TAKECONTROL 4
-#define SF_CAMERA_DRAWHUD			16
+#define SF_CAMERA_PLAYER_TAKECONTROL 		4
+#define SF_CAMERA_NODRAWHUD			16
 
 class CTriggerCamera : public CBaseDelay
 {
@@ -6052,9 +5447,10 @@ void CTriggerCamera::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 		if (pEntity)
 		{
 			int sendflags =	0;
-			sendflags |= 1;
-			if (pev->spawnflags & SF_CAMERA_DRAWHUD)
-		         		sendflags |= 2;
+			sendflags |= CAMERA_ON;
+			if (pev->spawnflags & SF_CAMERA_NODRAWHUD)
+		         		sendflags &= ~DRAW_HUD;
+			else	sendflags |= DRAW_HUD; 
 			((CBasePlayer *)pActivator)->viewEntity = m_iszViewEntity;
 			((CBasePlayer *)pActivator)->viewFlags = sendflags;
 			((CBasePlayer *)pActivator)->viewNeedsUpdate = 1;
@@ -6063,9 +5459,10 @@ void CTriggerCamera::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYP
 	else
 	{
 		int sendflags =	0;
-		sendflags |= 1;
-		if (pev->spawnflags & SF_CAMERA_DRAWHUD)
-			sendflags |= 2;
+		sendflags |= CAMERA_ON;
+			if (pev->spawnflags & SF_CAMERA_NODRAWHUD)
+		         		sendflags &= ~DRAW_HUD;
+			else	sendflags |= DRAW_HUD; 
 		((CBasePlayer *)pActivator)->viewEntity = pev->targetname;
 		((CBasePlayer *)pActivator)->viewFlags = sendflags;
 		((CBasePlayer *)pActivator)->viewNeedsUpdate = 1;

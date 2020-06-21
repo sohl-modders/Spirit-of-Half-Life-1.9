@@ -33,13 +33,189 @@
 #include "movewith.h"
 #include "locus.h"
 
+//=================================
+//	string operations
+//=================================
+
+char *COM_FileExtension (char *in)
+{
+	static char exten[8];
+	int             i;
+
+	while (*in && *in != '.')
+		in++;
+	if (!*in)
+		return "";
+	in++;
+	for (i=0 ; i<7 && *in ; i++,in++)
+		exten[i] = *in;
+	exten[i] = 0;
+	return exten;
+}
+
+//g-cont. new system for safely precaching and set models. Copyright© 2005 XashXT Group. All Rights Reserved.
+void SET_MODEL( edict_t *e, string_t s, char *c )//set default model if not found
+{
+	if (FStringNull( s ))SET_MODEL( e, c );
+	else SET_MODEL( e, s );
+}
+void SET_MODEL( edict_t *e, string_t model ){ SET_MODEL( e, STRING(model)); }
+void SET_MODEL( edict_t *e, const char *model )
+{
+	if(!model || !(*model)) 
+	{
+		g_engfuncs.pfnSetModel(e, "models/null.mdl");
+		return;
+	}
+	//is this brush model?
+	if (model[0] == '*')
+	{
+		g_engfuncs.pfnSetModel(e, model);
+		return;
+	}
+
+	//verify file exists
+	byte *data = LOAD_FILE_FOR_ME((char*)model, NULL);
+	if (data)
+	{
+		FREE_FILE( data );
+		g_engfuncs.pfnSetModel(e, model);
+		return;
+	}
+          
+          char *ext = COM_FileExtension((char *)model);
+	
+	if (FStrEq( ext, "mdl"))
+	{
+		//this is model
+		g_engfuncs.pfnSetModel(e, "models/error.mdl");
+	}
+	else if (FStrEq( ext, "spr"))
+	{
+		//this is sprite
+		g_engfuncs.pfnSetModel(e, "sprites/error.spr");
+	}
+	else
+	{
+		//set null model
+		g_engfuncs.pfnSetModel(e, "models/null.mdl");
+	}
+}
+
+int PRECACHE_MODEL( string_t s, char *e )//precache default model if not found
+{
+	if (FStringNull( s )) 
+		return PRECACHE_MODEL( e );
+	return PRECACHE_MODEL( s );
+}
+int PRECACHE_MODEL( string_t s ){ return PRECACHE_MODEL( (char*)STRING(s)); }
+int PRECACHE_MODEL( char* s )
+{
+	if(!s || !*s)
+	{
+		ALERT(at_console,"Warning: modelname not specified\n");
+		return g_sModelIndexNullModel; //set null model
+	}
+	//no need to precacahe brush
+	if (s[0] == '*') return 0;
+
+	//verify file exists
+	byte *data = LOAD_FILE_FOR_ME(s, NULL);
+	if (data)
+	{
+		FREE_FILE( data );
+		return g_engfuncs.pfnPrecacheModel(s);
+	}
+          
+	char *ext = COM_FileExtension( s );
+	
+	if (FStrEq( ext, "mdl"))
+	{
+		//this is model
+		ALERT(at_console,"Warning: model \"%s\" not found!\n",s);
+		return g_sModelIndexErrorModel;
+	}
+	else if (FStrEq( ext, "spr"))
+	{
+		//this is sprite
+		ALERT(at_console,"Warning: sprite \"%s\" not found!\n",s);
+		return g_sModelIndexErrorSprite;
+	}
+	else
+	{
+		//unknown format
+		ALERT(at_console,"Warning: invalid name \"%s\"!\n",s);
+		return g_sModelIndexNullModel; //set null model
+	}
+}
+
+int PRECACHE_SOUND( string_t s, char *e )//precache default model if not found
+{
+	if (FStringNull( s ))
+		return PRECACHE_SOUND( e );
+	return PRECACHE_SOUND( s );
+}
+int PRECACHE_SOUND( string_t s ){ return PRECACHE_SOUND( (char*)STRING(s)); }
+int PRECACHE_SOUND( char* s )
+{
+	if(!s || !*s) return g_sSoundIndexNullSound; //set null sound
+	
+	//NOTE: Engine function as predicted for sound folder
+	//But LOAD_FILE_FOR_ME don't known about this. Set it manualy
+
+	char path[256];		//g-cont.
+	char *sound = s;		//sounds from model events can contains a symbol '*'.
+				//remove this for sucessfully loading a sound	
+          if (sound[0] == '*')sound++;	//only for fake path, engine needs this prefix!
+	sprintf(path, "sound/%s", sound);
+	
+	//verify file exists
+	byte *data = LOAD_FILE_FOR_ME(path, NULL);
+	if (data)
+	{
+		FREE_FILE( data );
+		return g_engfuncs.pfnPrecacheSound(s);
+	}
+	
+	char *ext = COM_FileExtension( s );
+
+	if (FStrEq( ext, "wav"))
+	{
+		//this is sound
+		ALERT(at_console,"Warning: sound \"%s\" not found!\n",s);
+		return g_sSoundIndexNullSound; //set null sound
+	}
+	else
+	{
+		//unknown format
+		ALERT(at_console,"Warning: invalid name \"%s\"!\n",s);
+		return g_sSoundIndexNullSound; //set null sound
+	}
+}
+
+unsigned short PRECACHE_EVENT( int type, const char* psz )
+{
+	byte *data = LOAD_FILE_FOR_ME((char*)psz, NULL);
+	if (data)
+	{
+		FREE_FILE( data );
+		return g_engfuncs.pfnPrecacheEvent(type, psz);
+	}
+
+	ALERT(at_console,"Warning: event \"%s\" not found!\n", psz);
+	return g_engfuncs.pfnPrecacheEvent( type, "events/null.sc" );
+}
+
 float UTIL_WeaponTimeBase( void )
 {
-#if defined( CLIENT_WEAPONS )
-	return 0.0;
-#else
 	return gpGlobals->time;
-#endif
+}
+
+BOOL IsMultiplayer ( void )
+{
+	if( g_pGameRules->IsMultiplayer() ) 
+		return TRUE;
+	return FALSE;
 }
 
 static unsigned int glSeed = 0; 
@@ -343,7 +519,7 @@ DBG_AssertFunction(
 	if (szMessage != NULL)
 		sprintf(szOut, "ASSERT FAILED:\n %s \n(%s@%d)\n%s", szExpr, szFile, szLine, szMessage);
 	else
-		sprintf(szOut, "ASSERT FAILED:\n %s \n(%s@%d)", szExpr, szFile, szLine);
+		sprintf(szOut, "ASSERT FAILED:\n %s \n(%s@%d)\n", szExpr, szFile, szLine);
 	ALERT(at_debug, szOut);
 	}
 #endif	// DEBUG
@@ -615,7 +791,7 @@ void UTIL_FlushAliases( void )
 	}
 }
 
-void UTIL_AddToAliasList( CBaseMutableAlias *pAlias )
+void UTIL_AddToAliasList( CBaseAlias *pAlias )
 {
 	if (!g_pWorld)
 	{
@@ -638,7 +814,7 @@ void UTIL_AddToAliasList( CBaseMutableAlias *pAlias )
 	}
 	else
 	{
-		CBaseMutableAlias *pCurrent = g_pWorld->m_pFirstAlias;
+		CBaseAlias *pCurrent = g_pWorld->m_pFirstAlias;
 		while (pCurrent->m_pNextAlias != NULL)
 		{
 			if (pCurrent->m_pNextAlias == pAlias)
@@ -667,16 +843,18 @@ CBaseEntity *UTIL_FollowAliasReference(CBaseEntity *pStartEntity, const char* sz
 
 	while ( pEntity )
 	{
-		//LRC 1.8 - FollowAlias is now in CBaseEntity, no need to cast
-		pTempEntity = pEntity->FollowAlias( pStartEntity );
-		if ( pTempEntity )
+		if (pEntity->IsAlias())
 		{
-			// We've found an entity; only use it if its offset is lower than the offset we've currently got.
-			iTempOffset = OFFSET(pTempEntity->pev);
-			if (iBestOffset == -1 || iTempOffset < iBestOffset)
+			pTempEntity = ((CBaseAlias*)pEntity)->FollowAlias( pStartEntity );
+			if ( pTempEntity )
 			{
-				iBestOffset = iTempOffset;
-				pBestEntity = pTempEntity;
+				// We've found an entity; only use it if its offset is lower than the offset we've currently got.
+				iTempOffset = OFFSET(pTempEntity->pev);
+				if (iBestOffset == -1 || iTempOffset < iBestOffset)
+				{
+					iBestOffset = iTempOffset;
+					pBestEntity = pTempEntity;
+				}
 			}
 		}
 		pEntity = UTIL_FindEntityByTargetname(pEntity,szValue);
@@ -1289,6 +1467,11 @@ void UTIL_SetOrigin( CBaseEntity *pEntity, const Vector &vecOrigin )
 	SET_ORIGIN(ENT(pEntity->pev), vecOrigin );
 }
 
+void UTIL_SetAngles( CBaseEntity *pEntity, const Vector &vecAngles )
+{
+	pEntity->pev->angles = vecAngles;
+}
+
 void UTIL_ParticleEffect( const Vector &vecOrigin, const Vector &vecDirection, ULONG ulColor, ULONG ulCount )
 {
 	PARTICLE_EFFECT( vecOrigin, vecDirection, (float)ulColor, (float)ulCount );
@@ -1595,7 +1778,7 @@ void UTIL_DecalTrace( TraceResult *pTrace, int decalNumber )
 			index -= 256;
 		}
 	}
-	
+
 	MESSAGE_BEGIN( MSG_BROADCAST, SVC_TEMPENTITY );
 		WRITE_BYTE( message );
 		WRITE_COORD( pTrace->vecEndPos.x );
@@ -1652,11 +1835,9 @@ void UTIL_GunshotDecalTrace( TraceResult *pTrace, int decalNumber )
 		return;
 
 	int index = gDecals[ decalNumber ].index;
-	if ( index < 0 )
-		return;
+	if ( index < 0 ) return;
 
-	if (pTrace->flFraction == 1.0)
-		return;
+	if (pTrace->flFraction == 1.0) return;
 
 	MESSAGE_BEGIN( MSG_PAS, SVC_TEMPENTITY, pTrace->vecEndPos );
 		WRITE_BYTE( TE_GUNSHOTDECAL );
@@ -2035,11 +2216,12 @@ char* GetStringForUseType( USE_TYPE useType )
 	{
 	case USE_ON: return "USE_ON";
 	case USE_OFF: return "USE_OFF";
-	case USE_TOGGLE: return "USE_TOGGLE";
+	case USE_SET: return "USE_SET";
 	case USE_KILL: return "USE_KILL";
+	case USE_TOGGLE: return "USE_TOGGLE";
+	case USE_SAME: return "USE_SAME";
 	case USE_NOT: return "USE_NOT";
-	default:
-		return "USE_UNKNOWN!?";
+	default: return "USE_UNKNOWN!?";
 	}
 }
 
@@ -2971,14 +3153,16 @@ int	CRestore::BufferCheckZString( const char *string )
 //for trigger_viewset
 int HaveCamerasInPVS( edict_t* edict )
 {
+	CBaseEntity *pViewEnt = NULL;
 	for ( int i = 1; i <= gpGlobals->maxClients; i++ )
 	{
 		CBaseEntity *pEntity = UTIL_PlayerByIndex( i );
+		if (!pEntity) continue;
 		CBasePlayer *pPlayer = (CBasePlayer *)pEntity;
-		if (pPlayer->viewFlags & 1) // custom view active
+		if (pPlayer && pPlayer->viewFlags & 1) // custom view active
 		{
 			CBaseEntity *pViewEnt = UTIL_FindEntityByTargetname(NULL,STRING(pPlayer->viewEntity));
-			if (!pViewEnt)
+			if (FNullEnt(pViewEnt))
 			{
 				ALERT(at_error, "bad entity string in CamerasInPVS\n");
 				return 0;
@@ -2998,4 +3182,97 @@ int HaveCamerasInPVS( edict_t* edict )
 		}
 	}
 	return 0;
+}
+
+Vector UTIL_GetMirrorOrigin(CBaseEntity *pMirror, Vector pos)
+{
+	Vector result = pos;
+
+	switch ((int)pMirror->pev->frags)
+	{
+	case 0:
+		result[0] = pMirror->pev->origin[0]*2 - pos[0];
+		break;
+	case 1:
+		result[1] = pMirror->pev->origin[1]*2 - pos[1];
+		break;
+	case 2:
+	default:
+		result[2] = pMirror->pev->origin[2]*2 - pos[2];
+		break;
+	}
+	return result;
+}
+
+Vector UTIL_GetMirrorAngles (CBaseEntity *pMirror, Vector angles )
+{
+	Vector result = angles;
+	switch ((int)pMirror->pev->frags)
+	{
+	case 0:
+		result[0] = -result[0]; 
+		break;
+	case 1:
+		result[1] = -result[1]; 
+		break;
+	case 2:
+	default:
+		result[2] = -result[2]; 
+		break;
+	}
+	return result;
+}
+
+Vector UTIL_MirrorVector( Vector angles )
+{
+	Vector result = angles;
+	edict_t *pFind; 
+          int numMirrors = 0;
+	
+	pFind = FIND_ENTITY_BY_CLASSNAME( NULL, "env_mirror" );
+          
+	while ( !FNullEnt( pFind ) )
+	{
+		CBaseEntity *pMirror = CBaseEntity::Instance( pFind );
+                    
+		if(numMirrors > 32) break;
+		if ( pMirror )
+		{
+			numMirrors++;
+			if(!pMirror->pev->impulse) continue;
+			result = UTIL_GetMirrorAngles(pMirror, angles);
+		}
+		pFind = FIND_ENTITY_BY_CLASSNAME( pFind, "env_mirror" );
+	}
+	return result;
+}
+
+Vector UTIL_MirrorPos ( Vector endpos )
+{
+	Vector mirpos(0, 0, 0);
+	edict_t *pFind; 
+          int numMirrors = 0;
+	
+	pFind = FIND_ENTITY_BY_CLASSNAME( NULL, "env_mirror" );
+
+	while ( !FNullEnt( pFind ) )
+	{
+		CBaseEntity *pMirror = CBaseEntity::Instance( pFind );
+                    
+                    if(numMirrors > 32) break;
+		if ( pMirror )
+		{
+			numMirrors++;
+			if(!pMirror->pev->impulse) continue;
+			Vector delta;
+			float dist;
+		
+			delta = pMirror->Center() - endpos;
+			dist = delta.Length();
+			if(pMirror->pev->waterlevel < dist) continue;
+			mirpos = UTIL_GetMirrorOrigin(pMirror, endpos);
+		}
+		pFind = FIND_ENTITY_BY_CLASSNAME( pFind, "env_mirror" );
+	}
+	return mirpos;
 }

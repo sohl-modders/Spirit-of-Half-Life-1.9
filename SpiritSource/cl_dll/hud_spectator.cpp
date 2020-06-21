@@ -928,6 +928,7 @@ bool CHudSpectator::ParseOverviewFile( )
 
 	if (!pfile)
 	{
+		
 		gEngfuncs.Con_Printf("Couldn't open file %s. Using default values for overiew mode.\n", filename );
 		return false;
 	}
@@ -1076,7 +1077,7 @@ void CHudSpectator::DrawOverviewLayer()
 	if ( hasMapImage)
 	{
 		i = m_MapSprite->numframes / (4*3);
-		i = sqrt(double(i)); //LRC 1.8 - Visual Studio.NET complained here without the cast
+		i = sqrt(i);
 		xTiles = i*4;
 		yTiles = i*3;
 	}

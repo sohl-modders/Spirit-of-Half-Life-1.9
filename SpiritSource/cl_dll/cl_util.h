@@ -17,11 +17,21 @@
 //
 
 #include "cvardef.h"
+#include <windows.h>
 
 #ifndef TRUE
 #define TRUE 1
 #define FALSE 0
 #endif
+
+extern int pause;
+
+typedef HMODULE dllhandle_t;
+typedef struct dllfunction_s
+{
+	const char *name;
+	void **funcvariable;
+} dllfunction_t;
 
 // Macros to hook function calls into the HUD object
 #define HOOK_MESSAGE(x) gEngfuncs.pfnHookUserMsg(#x, __MsgFunc_##x );
@@ -41,6 +51,11 @@
 inline float CVAR_GET_FLOAT( const char *x ) {	return gEngfuncs.pfnGetCvarFloat( (char*)x ); }
 inline char* CVAR_GET_STRING( const char *x ) {	return gEngfuncs.pfnGetCvarString( (char*)x ); }
 inline struct cvar_s *CVAR_CREATE( const char *cv, const char *val, const int flags ) {	return gEngfuncs.pfnRegisterVariable( (char*)cv, (char*)val, flags ); }
+
+//dll managment
+bool Sys_LoadLibrary (const char* dllname, dllhandle_t* handle, const dllfunction_t *fcts);
+void Sys_UnloadLibrary (dllhandle_t* handle);
+void* Sys_GetProcAddress (dllhandle_t handle, const char* name);
 
 #define SPR_Load (*gEngfuncs.pfnSPR_Load)
 #define SPR_Set (*gEngfuncs.pfnSPR_Set)
@@ -158,5 +173,6 @@ inline void UnpackRGB(int &r, int &g, int &b, unsigned long ulRGB)\
 }
 
 HSPRITE LoadSprite(const char *pszName);
+float TransformColor ( float color );
 
-inline float		UTIL_Lerp( float lerpfactor, float A, float B ) { return A + lerpfactor*(B-A); }
+const char *UTIL_FileExtension( const char *in );

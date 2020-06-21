@@ -202,6 +202,7 @@ public:
 	void	TurnOn( void );
 	void	TurnOff( void );
 	virtual STATE GetState( void ) { return (pev->effects & EF_NODRAW)?STATE_OFF:STATE_ON; };
+	void	Activate( void );
 
 	void	FireAtPoint( Vector startpos, TraceResult &point );
 
@@ -210,8 +211,6 @@ public:
 	virtual int		Save( CSave &save );
 	virtual int		Restore( CRestore &restore );
 	static	TYPEDESCRIPTION m_SaveData[];
-
-	EHANDLE m_hActivator;	//AJH allow *locus start/end positions
 
 	CSprite	*m_pStartSprite;
 	CSprite	*m_pEndSprite;

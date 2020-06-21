@@ -30,10 +30,9 @@ ParticleType::ParticleType( ParticleType *pNext )
 	m_bEndFrame = false;
 
 	m_bIsDefined = false;
-//	m_iCollision = 0;
 }
 
-particle* ParticleType::CreateParticle(ParticleSystem *pSys)//particle *pPart)
+particle* ParticleType::CreateParticle(ParticleSystem *pSys)
 {
 	if (!pSys) return NULL;
 
@@ -63,7 +62,7 @@ void ParticleType::InitParticle(particle *pPart, ParticleSystem *pSys)
 	if (m_pOverlayType)
 	{
 		// create an overlay for this particle
-		pOverlay = pSys->ActivateParticle();//m_pOverlayType->InitParticle(pSys);
+		pOverlay = pSys->ActivateParticle();
 		if (pOverlay)
 		{
 			pOverlay->age = pPart->age;
@@ -85,15 +84,12 @@ void ParticleType::InitParticle(particle *pPart, ParticleSystem *pSys)
 	pPart->m_fSize = m_StartSize.GetInstance();
 	if (m_EndSize.IsDefined())
 		pPart->m_fSizeStep = m_EndSize.GetOffset(pPart->m_fSize) * fLifeRecip;
-	else
-		pPart->m_fSizeStep = m_SizeDelta.GetInstance();
-	//pPart->m_fSizeStep = m_EndSize.GetOffset(pPart->m_fSize) * fLifeRecip;
+	else	pPart->m_fSizeStep = m_SizeDelta.GetInstance();
 
 	pPart->frame = m_StartFrame.GetInstance();
 	if (m_EndFrame.IsDefined())
 		pPart->m_fFrameStep = m_EndFrame.GetOffset(pPart->frame) * fLifeRecip;
-	else
-		pPart->m_fFrameStep = m_FrameRate.GetInstance();
+	else	pPart->m_fFrameStep = m_FrameRate.GetInstance();
 
 	pPart->m_fAlpha = m_StartAlpha.GetInstance();
 	pPart->m_fAlphaStep = m_EndAlpha.GetOffset(pPart->m_fAlpha) * fLifeRecip;
@@ -177,7 +173,7 @@ ParticleSystem::ParticleSystem( int iEntIndex, char *szFilename )
 
 	if (!szFile)
 	{
-		gEngfuncs.Con_Printf("Couldn't open particle file %s. Using default particle settings.\n", szFilename );
+		CONPRINT("Couldn't open particle file %s. Using default particle settings.\n", szFilename );
 		return;
 	}
 	else
@@ -195,7 +191,6 @@ ParticleSystem::ParticleSystem( int iEntIndex, char *szFilename )
 			{
 				szFile = gEngfuncs.COM_ParseFile(szFile,szToken);
 				m_pMainType = AddPlaceholderType(szToken);
-				//strncpy(m_szMainType, szToken, sizeof(m_szMainType) );
 			}
 			else if ( !stricmp( szToken, "{" ) )
 			{
@@ -410,7 +405,6 @@ ParticleType *ParticleSystem::ParseType( char *&szFile )
 		else if ( !stricmp( szToken, "spraytype" ) )
 		{
 			szFile = gEngfuncs.COM_ParseFile(szFile,szToken);
-			//gEngfuncs.Con_Printf("Read sprayname %s\n", szToken);
 			ParticleType *pTemp = GetType(szToken);
 
 			if (pTemp)
@@ -447,6 +441,11 @@ ParticleType *ParticleSystem::ParseType( char *&szFile )
 		{
 			szFile = gEngfuncs.COM_ParseFile(szFile,szToken);
 			pType->m_SprayYaw = RandomRange( szToken );
+		}
+		else if ( !stricmp( szToken, "sprayroll" ) )
+		{
+			szFile = gEngfuncs.COM_ParseFile(szFile,szToken);
+			pType->m_SprayRoll = RandomRange( szToken );
 		}
 		else if ( !stricmp( szToken, "drag" ) )
 		{
@@ -513,23 +512,6 @@ ParticleType *ParticleSystem::ParseType( char *&szFile )
 				pType->m_iDrawCond = CONTENT_SPECIAL3;
 			}
 		}
-/*		else if ( !stricmp( szToken, "collision" ) )
-		{
-			szFile = gEngfuncs.COM_ParseFile(szFile,szToken);
-			if ( !stricmp( szToken, "none" ) )
-			{
-				pType->m_iCollision = COLLISION_NONE;
-			}
-			else if ( !stricmp( szToken, "die" ) )
-			{
-				pType->m_iCollision = COLLISION_DIE;
-			}
-			else if ( !stricmp( szToken, "bounce" ) )
-			{
-				pType->m_iCollision = COLLISION_BOUNCE;
-			}
-		}
-*/
 		// get the next token
 		szFile = gEngfuncs.COM_ParseFile(szFile, szToken);
 	}
@@ -569,31 +551,28 @@ void ParticleSystem::CalculateDistance()
 }
 
 
-bool ParticleSystem::UpdateSystem( float frametime, /*vec3_t &right, vec3_t &up,*/ int messagenum )
+bool ParticleSystem::UpdateSystem( float frametime, int messagenum )
 {
 	// the entity emitting this system
-	cl_entity_t *source = gEngfuncs.GetEntityByIndex( m_iEntIndex );
+          cl_entity_t *source = GetClientEntityWithServerIndex( m_iEntIndex );
 
-	// Don't update if the system is outside the player's PVS.
-	if(!source || source->curstate.messagenum < messagenum)
-		return true;
+	if (source->curstate.msg_time < gEngfuncs.GetClientTime())
+	{         //remove particles
+		source->curstate.body = 0;
+	}
 
 	if (m_pMainParticle == NULL)
 	{
-	//	gEngfuncs.Con_Printf("body %d\n", source->curstate.body);
 		if (source->curstate.body)
 		{
-			ParticleType *pType = m_pMainType;//GetMainType();
+			ParticleType *pType = m_pMainType;
 			if (pType)
 			{
-				m_pMainParticle = pType->CreateParticle(this);//m_pMainParticle);
-//				m_pMainParticle = ActivateParticle();
+				m_pMainParticle = pType->CreateParticle(this);
 				if (m_pMainParticle)
 				{
 					m_pMainParticle->m_iEntIndex = m_iEntIndex;
-					//m_pMainParticle->origin = source->curstate.origin;
 					m_pMainParticle->age_death = -1; // never die
-					//pPart->origin[0] = x; pPart->origin[1] = y; pPart->origin[2] = z;
 				}
 			}
 		}
@@ -607,17 +586,11 @@ bool ParticleSystem::UpdateSystem( float frametime, /*vec3_t &right, vec3_t &up,
 	particle* pParticle = m_pActiveParticle;
 	particle* pLast = NULL;
 
-//	gEngfuncs.GetViewAngles((float*)normal);
-//	AngleVectors(normal,forward,right,up);
-
 	while( pParticle )
 	{
-//		if( TestParticle(part) )
-//		{
 		if( UpdateParticle( pParticle, frametime ) )
 		{
 			// draw it, move onto the next one
-			//DrawParticle( pParticle, right, up );
 
 			pLast = pParticle;
 			pParticle = pParticle->nextpart;
@@ -645,12 +618,12 @@ bool ParticleSystem::UpdateSystem( float frametime, /*vec3_t &right, vec3_t &up,
 	return true;
 }
 
-void ParticleSystem::DrawSystem()//vec3_t &right, vec3_t &up)
+void ParticleSystem::DrawSystem()
 {
 	vec3_t normal, forward, right, up;
 
 	gEngfuncs.GetViewAngles((float*)normal);
-	AngleVectors(normal,forward,right,up);
+	AngleVectors(normal, forward, right, up);
 
 	particle* pParticle = m_pActiveParticle;
 	for( pParticle = m_pActiveParticle; pParticle; pParticle = pParticle->nextpart )
@@ -659,10 +632,8 @@ void ParticleSystem::DrawSystem()//vec3_t &right, vec3_t &up)
 	}
 }
 
-/*bool ParticleSystem::ParticleIsVisible( particle* part )
+bool ParticleSystem::ParticleIsVisible( particle* part )
 {
-	return true;
-
 	vec3_t normal, forward, right, up;
 	gEngfuncs.GetViewAngles((float*)normal);
 	AngleVectors( normal, forward, right, up );
@@ -675,7 +646,7 @@ void ParticleSystem::DrawSystem()//vec3_t &right, vec3_t &up)
 
 	if ( DotProduct ( vecDir, forward ) < 0 )
 		return false;
-/*
+
 	float dot = fabs( DotProduct ( vecDir, right ) ) + fabs( DotProduct ( vecDir, up ) ) * 0.5;
 	// tweak for distance
 	dot *= 1.0 + 0.2 * ( distance / 8192 );
@@ -685,30 +656,25 @@ void ParticleSystem::DrawSystem()//vec3_t &right, vec3_t &up)
 	
 	if ( dot > arc )
 		return false;
-*/
-//	return true;
-//}
+
+	return true;
+}
 
 bool ParticleSystem::UpdateParticle(particle *part, float frametime)
 {
-//	gEngfuncs.Con_Printf("UpdParticle %f: age %f, life %f\n", frametime, part->age, part->age_death);
-	if (frametime == 0)
-		return true;
+	if (frametime == 0) return true;
 
 	part->age += frametime;
 
-	cl_entity_t *source = gEngfuncs.GetEntityByIndex( m_iEntIndex );  //AJH moved here
-
+          cl_entity_t *source = GetClientEntityWithServerIndex( m_iEntIndex );
+	
 	// is this particle bound to an entity?
 	if (part->m_iEntIndex)
 	{
-		//cl_entity_t *source = gEngfuncs.GetEntityByIndex( m_iEntIndex ); //AJH
 		if (source && source->curstate.body)
 		{
 			part->velocity = (source->curstate.origin - part->origin)/frametime;
 			part->origin = source->curstate.origin;
-//			part->velocity = source->curstate.velocity;
-//			gEngfuncs.Con_Printf("using velocity %f %f %f\n", part->velocity.x, part->velocity.y, part->velocity.z);
 		}
 		else
 		{
@@ -726,6 +692,9 @@ bool ParticleSystem::UpdateParticle(particle *part, float frametime)
 		vec3_t vecOldPos = part->origin;
 		if (part->m_fDrag)
 			VectorMA(part->velocity, -part->m_fDrag*frametime, part->velocity - part->m_vecWind, part->velocity);
+
+		angles = source->curstate.angles;
+		
 		VectorMA(part->velocity, frametime, part->accel, part->velocity);
 		VectorMA(part->origin, frametime, part->velocity, part->origin);
 
@@ -733,7 +702,7 @@ bool ParticleSystem::UpdateParticle(particle *part, float frametime)
 		{
 			vec3_t vecTarget;
 			VectorMA(part->origin, frametime, part->velocity, vecTarget);
-			pmtrace_t *tr = gEngfuncs.PM_TraceLine( part->origin, vecTarget, PM_TRACELINE_PHYSENTSONLY, 2 /*point hull*/, -1 );
+			pmtrace_t *tr = gEngfuncs.PM_TraceLine( part->origin, vecTarget, PM_TRACELINE_PHYSENTSONLY, 2, -1 );
 			if (tr->fraction < 1)
 			{
 				part->origin = tr->endpos;
@@ -762,9 +731,9 @@ bool ParticleSystem::UpdateParticle(particle *part, float frametime)
 				pChild->velocity = part->velocity;
 				if (fSprayForce)
 				{
-					float fSprayPitch = part->pType->m_SprayPitch.GetInstance()/*;*/ - source->curstate.angles.x;	//AJH For rotating paticles.
-					float fSprayYaw = part->pType->m_SprayYaw.GetInstance()/*;*/ - source->curstate.angles.y;		//AJH
-					float fForceCosPitch = fSprayForce*CosLookup(fSprayPitch); //- source->curstate.angles.z;		//AJH
+					float fSprayPitch = part->pType->m_SprayPitch.GetInstance() - source->curstate.angles.x;
+					float fSprayYaw = part->pType->m_SprayYaw.GetInstance() - source->curstate.angles.y;
+					float fForceCosPitch = fSprayForce*CosLookup(fSprayPitch);
 				//	vec3_t vecSprayVel;
 					pChild->velocity.x += CosLookup(fSprayYaw) * fForceCosPitch;
 					pChild->velocity.y += SinLookup(fSprayYaw) * fForceCosPitch;
@@ -785,23 +754,19 @@ bool ParticleSystem::UpdateParticle(particle *part, float frametime)
 		part->m_fAngle += part->m_fAngleStep * frametime;
 		while (part->m_fAngle < 0) part->m_fAngle += 360;
 		while (part->m_fAngle > 360) part->m_fAngle -= 360;
-
-//		gEngfuncs.Con_Printf("Rotating to %f, width %f\n", part->m_fAngle, part->m_fWidth);
 	}
 	return true;
 }
 
 void ParticleSystem::DrawParticle(particle *part, vec3_t &right, vec3_t &up)
 {
-//	gEngfuncs.Con_Printf("DrawParticle: size %f, pos %f %f %f\n", part->size, part->origin[0], part->origin[1], part->origin[2]);
 	float fSize = part->m_fSize;
 	vec3_t point1,point2,point3,point4;
 	vec3_t origin = part->origin;
 
 	// nothing to draw?
-	if (fSize == 0)
-		return;
-
+	if (fSize == 0) return;
+          
 	float fCosSize = CosLookup(part->m_fAngle)*fSize;
 	float fSinSize = SinLookup(part->m_fAngle)*fSize;
 

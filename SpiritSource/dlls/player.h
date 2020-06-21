@@ -86,15 +86,10 @@ enum sbar_data
 };
 
 #define CHAT_INTERVAL 1.0f
-class CItemCamera;//AJH
+
 class CBasePlayer : public CBaseMonster
 {
 public:
-	
-	entvars_t*			m_pevInflictor; //AJH used for time based damage to remember inflictor
-										//m_hActivator remembers activator
-	CItemCamera*		m_pItemCamera;//AJH Remember that we have a camera
-
 	int					random_seed;    // See that is shared between client & server for shared weapons code
 
 	int					m_iPlayerSound;// the index of the sound list slot reserved for this player
@@ -164,13 +159,15 @@ public:
 	BOOL			m_fLongJump; // does this player have the longjump module?
 
 	float       m_tSneaking;
-	int			m_iUpdateTime;		// stores the number of frame ticks before sending HUD update messages
-	int			m_iClientHealth;	// the health currently known by the client.  If this changes, send a new
-	int			m_iClientBattery;	// the Battery currently known by the client.  If this changes, send a new
-	int			m_iHideHUD;		// the players hud weapon info is to be hidden
-	int			m_iClientHideHUD;
-	int			m_iFOV;			// field of view
-	int			m_iClientFOV;	// client's known FOV
+	int	m_iUpdateTime;	 // stores the number of frame ticks before sending HUD update messages
+	int	m_iClientHealth;	 // the health currently known by the client.  If this changes, send a new
+	int	m_iClientBattery;	 // the Battery currently known by the client.  If this changes, send a new
+	int	m_iClientFlashlight; // the FlashLight Battery currently known by the client.
+	int	m_iClientFlashState; // the falshlight status
+	int	m_iHideHUD;	 // the players hud weapon info is to be hidden
+	int	m_iClientHideHUD;
+	int	m_iFOV;		// field of view
+	int	m_iClientFOV;	// client's known FOV
 
 	// usable player items 
 	CBasePlayerItem	*m_rgpPlayerItems[MAX_ITEM_TYPES];
@@ -204,6 +201,7 @@ public:
 	virtual void PostThink( void );
 	virtual Vector GetGunPosition( void );
 	virtual int TakeHealth( float flHealth, int bitsDamageType );
+	virtual int TakeArmor( float flArmor );
 	virtual void TraceAttack( entvars_t *pevAttacker, float flDamage, Vector vecDir, TraceResult *ptr, int bitsDamageType);
 	virtual int TakeDamage( entvars_t* pevInflictor, entvars_t* pevAttacker, float flDamage, int bitsDamageType);
 	virtual void	Killed( entvars_t *pevAttacker, int iGib );
@@ -224,7 +222,7 @@ public:
 	void RenewItems(void);
 	void PackDeadPlayerItems( void );
 	void RemoveAllItems( BOOL removeSuit );
-	void RemoveItems( int iWeaponMask, int i9mm, int i357, int iBuck, int iBolt, int iARGren, int iRock, int iEgon, int iSatchel, int iSnark, int iTrip, int iGren, int iHornet );
+	void RemoveItems( int iWeaponMask, int i9mm, int i357, int iBuck, int iBolt, int iARGren, int iRock, int iEgon, int iSatchel, int iSnark, int iTrip, int iGren, int iHornet, int iCycler );
 	void RemoveAmmo( const char* szName, int iAmount );
 	BOOL SwitchWeapon( CBasePlayerItem *pWeapon );
 
@@ -305,11 +303,6 @@ public:
 	int GetCustomDecalFrames( void );
 
 	void CBasePlayer::TabulateAmmo( void );
-
-	float m_flStartCharge;
-	float m_flAmmoStartCharge;
-	float m_flPlayAftershock;
-	float m_flNextAmmoBurn;// while charging, when to absorb another unit of player's ammo?
 	
 	//Player ID
 	void InitStatusBar( void );
@@ -323,7 +316,7 @@ public:
 	int		viewEntity; // string
 	int		viewFlags;	// 1-active, 2-draw hud
 	int		viewNeedsUpdate; // precache sets to 1, UpdateClientData() sets to 0	
-	float m_flNextChatTime;
+	float 		m_flNextChatTime;
 	int	Rain_dripsPerSecond;
 	float	Rain_windX, Rain_windY;
 	float	Rain_randX, Rain_randY;
@@ -346,7 +339,10 @@ public:
 
 extern int	gmsgHudText;
 extern int	gmsgParticle; // LRC
-extern int	gmsgInventory;	//AJH
+extern int	gmsgSetBody;
+extern int	gmsgSetSkin;
+extern int	gmsgSetMirror;
+extern int	gmsgFsound;
 extern BOOL gInitHUD;
 
 #endif // PLAYER_H

@@ -175,28 +175,25 @@ void CAmbientGeneric :: Spawn( void )
 		80  : "Large Radius"
 */
 
-	if ( !FBitSet ( pev->spawnflags, AMBIENT_SOUND_CUSTOM_ATTENUATION) )
+	if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_EVERYWHERE) )
 	{
-		if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_EVERYWHERE) )
-		{
-			m_flAttenuation = ATTN_NONE;
-		}
-		else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_SMALLRADIUS) )
-		{
-			m_flAttenuation = ATTN_IDLE;
-		}
-		else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_MEDIUMRADIUS) )
-		{
-			m_flAttenuation = ATTN_STATIC;
-		}
-		else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_LARGERADIUS) )
-		{
-			m_flAttenuation = ATTN_NORM;
-		}
-		else 
-		{// if the designer didn't set a sound attenuation, default to one.
-			m_flAttenuation = ATTN_STATIC;
-		}
+		m_flAttenuation = ATTN_NONE;
+	}
+	else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_SMALLRADIUS) )
+	{
+		m_flAttenuation = ATTN_IDLE;
+	}
+	else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_MEDIUMRADIUS) )
+	{
+		m_flAttenuation = ATTN_STATIC;
+	}
+	else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_LARGERADIUS) )
+	{
+		m_flAttenuation = ATTN_NORM;
+	}
+	else 
+	{// if the designer didn't set a sound attenuation, default to one.
+		m_flAttenuation = ATTN_STATIC;
 	}
 	
 	char* szSoundFile = (char*) STRING(pev->message);
@@ -724,10 +721,6 @@ void CAmbientGeneric :: ToggleUse ( CBaseEntity *pActivator, CBaseEntity *pCalle
 
 		InitModulationParms();
 
-		// AJH / MJB - [LN] volume field:
-		if (!FStringNull(pev->noise))
-			m_dpv.vol = CalcLocus_Number(this, STRING(pev->noise), 0);
-				
 		if (m_pPlayFrom)
 		{
 			EMIT_SOUND_DYN( m_pPlayFrom, m_iChannel, szSoundFile, //LRC
@@ -903,38 +896,6 @@ void CAmbientGeneric :: KeyValue( KeyValueData *pkvd )
 
 		pkvd->fHandled = TRUE;
 	}
-
-	// custom attenuation
-	else if (FStrEq(pkvd->szKeyName, "radiusscale"))
-	{
-		float radiusscale = atof(pkvd->szValue);
-
-		if ( radiusscale <= 0 || FBitSet ( pev->spawnflags, AMBIENT_SOUND_EVERYWHERE) )
-		{
-			m_flAttenuation = ATTN_NONE;
-		}
-		else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_SMALLRADIUS) )
-		{
-			m_flAttenuation = ATTN_IDLE*radiusscale;
-		}
-		else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_MEDIUMRADIUS) )
-		{
-			m_flAttenuation = ATTN_STATIC*radiusscale;
-		}
-		else if ( FBitSet ( pev->spawnflags, AMBIENT_SOUND_LARGERADIUS) )
-		{
-			m_flAttenuation = ATTN_NORM*radiusscale;
-		}
-		else 
-		{// if the designer didn't set a sound attenuation, default to one.
-			m_flAttenuation = ATTN_STATIC*radiusscale;
-		}
-
-		pev->spawnflags |= AMBIENT_SOUND_CUSTOM_ATTENUATION;
-
-		pkvd->fHandled = TRUE;
-	}
-
 	else
 		CBaseEntity::KeyValue( pkvd );
 }

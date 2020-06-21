@@ -22,7 +22,6 @@
 #include "cl_util.h"
 #include "netadr.h"
 #include "vgui_schememanager.h"
-#include "mp3.h" //AJH - Killars MP3player
 
 extern "C"
 {
@@ -39,7 +38,6 @@ extern "C"
 
 cl_enginefunc_t gEngfuncs;
 CHud gHUD;
-CMP3 gMP3; //AJH - Killars MP3player
 
 TeamFortressViewport *gViewPort = NULL;
 
@@ -54,10 +52,6 @@ void IN_Commands( void );
 Called when the DLL is first loaded.
 ==========================
 */
-
-// SCREEN GLOW FragBait0
-extern void InitScreenGlow(); // FragBait0 - Glow Effect
-extern void RenderScreenGlow(); // FragBait0 - Glow Effect
 
 extern "C"
 {
@@ -178,8 +172,6 @@ int DLLEXPORT HUD_VidInit( void )
 
 	VGui_Startup();
 
-//LRCTEMP 1.8	if (CVAR_GET_FLOAT("r_glow") != 0)	 //check the cvar for the glow is on.//AJH Modified to include glow mode (1&2)
-//LRCTEMP 1.8		InitScreenGlow(); // glow effect --FragBait0
 	return 1;
 }
 
@@ -212,9 +204,6 @@ redraw the HUD.
 
 int DLLEXPORT HUD_Redraw( float time, int intermission )
 {
-//LRCTEMP 1.8	if (CVAR_GET_FLOAT("r_glow") != 0)	 //check the cvar for the glow is on.//AJH Modified to include glow mode (1&2)
-//LRCTEMP 1.8		RenderScreenGlow(); // glow effect --FragBait0
-
 	gHUD.Redraw( time, intermission );
 
 	return 1;

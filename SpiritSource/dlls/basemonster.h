@@ -111,8 +111,6 @@ public:
 	virtual int		Save( CSave &save ); 
 	virtual int		Restore( CRestore &restore );
 
-	virtual STATE GetState( void ) { return (pev->deadflag == DEAD_DEAD)?STATE_OFF:STATE_ON; };
-	
 	static	TYPEDESCRIPTION m_SaveData[];
 
 	void KeyValue( KeyValueData *pkvd );
@@ -315,6 +313,7 @@ public:
 	virtual	Vector  GetGunPosition( void );
 
 	virtual int TakeHealth( float flHealth, int bitsDamageType );
+	virtual int TakeArmor( float flArmor );
 	virtual int TakeDamage( entvars_t* pevInflictor, entvars_t* pevAttacker, float flDamage, int bitsDamageType);
 	int			DeadTakeDamage( entvars_t *pevInflictor, entvars_t *pevAttacker, float flDamage, int bitsDamageType );
 
@@ -329,6 +328,7 @@ public:
 	virtual void AlertSound ( void ) { return; };
 	virtual void IdleSound ( void ) { return; };
 	virtual void PainSound ( void ) { return; };
+	virtual void StepSound( void );
 	
 	virtual void StopFollowing( BOOL clearSchedule ) {}
 
@@ -345,15 +345,10 @@ public:
 	CBaseEntity* DropItem ( char *pszItemName, const Vector &vecPos, const Vector &vecAng );// drop an item.
 
 	//LRC
-	virtual bool	CalcNumber( CBaseEntity *pLocus, float* OUTresult )
+	float	CalcRatio( CBaseEntity *pLocus )
 	{
-		//LRC 1.8 - health 0 when dead
-		if ( IsAlive() )
-			*OUTresult = pev->health / pev->max_health;
-		else
-			*OUTresult = 0;
-
-		return true;
+		/*ALERT(at_console, "monster CR: %f/%f = %f\n", pev->health, pev->max_health, pev->health / pev->max_health);*/
+		return pev->health / pev->max_health;
 	}
 };
 

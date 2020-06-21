@@ -175,7 +175,7 @@ void CBaseMonster :: MaintainSchedule ( void )
 	{
 		if ( m_pSchedule != NULL && TaskIsComplete() )
 		{
-			NextScheduledTask();                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   
+			NextScheduledTask();
 		}
 
 	// validate existing schedule 
@@ -495,7 +495,16 @@ void CBaseMonster :: RunTask ( Task_t *pTask )
 		{
 			if (m_fSequenceFinished)
 			{
-				m_pCine->SequenceDone( this );
+				if (m_pCine->m_iRepeatsLeft > 0)
+				{
+					m_pCine->m_iRepeatsLeft--;
+					pev->frame = m_pCine->m_fRepeatFrame;
+					ResetSequenceInfo( );
+				}
+				else
+				{
+					TaskComplete();
+				}
 			}
 			break;
 		}
@@ -1256,16 +1265,25 @@ case TASK_GET_PATH_TO_BESTSCENT:
 		{
 			if (m_pCine->IsAction())
 			{
+				//ALERT(at_console,"PlayScript: setting idealactivity %d\n",m_pCine->m_fAction);
 				switch(m_pCine->m_fAction)
 				{
-				case 0:	m_IdealActivity = ACT_RANGE_ATTACK1; break;
-				case 1:	m_IdealActivity = ACT_RANGE_ATTACK2; break;
-				case 2:	m_IdealActivity = ACT_MELEE_ATTACK1; break;
-				case 3:	m_IdealActivity = ACT_MELEE_ATTACK2; break;
-				case 4:	m_IdealActivity = ACT_SPECIAL_ATTACK1; break;
-				case 5:	m_IdealActivity = ACT_SPECIAL_ATTACK2; break;
-				case 6:	m_IdealActivity = ACT_RELOAD; break;
-				case 7:	m_IdealActivity = ACT_HOP; break;
+				case 0:
+					m_IdealActivity = ACT_RANGE_ATTACK1; break;
+				case 1:
+					m_IdealActivity = ACT_RANGE_ATTACK2; break;
+				case 2:
+					m_IdealActivity = ACT_MELEE_ATTACK1; break;
+				case 3:
+					m_IdealActivity = ACT_MELEE_ATTACK2; break;
+				case 4:
+					m_IdealActivity = ACT_SPECIAL_ATTACK1; break;
+				case 5:
+					m_IdealActivity = ACT_SPECIAL_ATTACK2; break;
+				case 6:
+					m_IdealActivity = ACT_RELOAD; break;
+				case 7:
+					m_IdealActivity = ACT_HOP; break;
 				}
 				pev->framerate = 1.0; // shouldn't be needed, but just in case
 				pev->movetype = MOVETYPE_FLY;
@@ -1273,12 +1291,11 @@ case TASK_GET_PATH_TO_BESTSCENT:
 			}
 			else
 			{
-				pev->movetype = MOVETYPE_FLY;
-				ClearBits(pev->flags, FL_ONGROUND);
 				m_pCine->StartSequence( (CBaseMonster *)this, m_pCine->m_iszPlay, TRUE );
 				if ( m_fSequenceFinished )
 					ClearSchedule();
 				pev->framerate = 1.0;
+				//ALERT( at_aiconsole, "Script %s has begun for %s\n", STRING( m_pCine->m_iszPlay ), STRING(pev->classname) );
 			}
 			m_scriptState = SCRIPT_PLAYING;
 			break;
@@ -1289,6 +1306,7 @@ case TASK_GET_PATH_TO_BESTSCENT:
 			TaskComplete();
 			break;
 		}
+//LRC
 	case TASK_END_SCRIPT:
 		{
 			m_pCine->SequenceDone( this );
@@ -1300,9 +1318,13 @@ case TASK_GET_PATH_TO_BESTSCENT:
 			if ( m_pCine != NULL )
 			{
 				// Plant on script
+				// LRC - if it's a teleport script, do the turn too
 				if (m_pCine->m_fMoveTo == 4 || m_pCine->m_fMoveTo == 6)
 				{
-					pev->angles.y = m_hTargetEnt->pev->angles.y;
+					if (m_pCine->m_fTurnType == 0) //LRC
+						pev->angles.y = m_hTargetEnt->pev->angles.y;
+					else if (m_pCine->m_fTurnType == 1)
+						pev->angles.y = UTIL_VecToYaw(m_hTargetEnt->pev->origin - pev->origin);
 					pev->ideal_yaw = pev->angles.y;
 					pev->avelocity = Vector( 0, 0, 0 );
 					pev->velocity = Vector( 0, 0, 0 );
@@ -1318,9 +1340,22 @@ case TASK_GET_PATH_TO_BESTSCENT:
 		}
 	case TASK_FACE_SCRIPT:
 		{
-			if ( m_pCine != NULL )
+			if ( m_pCine != NULL && m_pCine->m_fMoveTo != 0) // movetype "no move" makes us ignore turntype
 			{
-				pev->ideal_yaw = UTIL_AngleMod( m_hTargetEnt->pev->angles.y );
+				switch (m_pCine->m_fTurnType)
+				{
+				case 0:
+					pev->ideal_yaw = UTIL_AngleMod( m_pCine->pev->angles.y );
+					break;
+				case 1:
+					// yes, this is inconsistent- turn to face uses the "target" and turn to angle uses the "cine".
+					if (m_hTargetEnt)
+						MakeIdealYaw ( m_hTargetEnt->pev->origin );
+					else
+						MakeIdealYaw ( m_pCine->pev->origin );
+					break;
+				// default: don't turn
+				}
 			}
 
 			TaskComplete();

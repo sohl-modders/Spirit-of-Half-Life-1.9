@@ -85,6 +85,7 @@ public:
 	//	ALERT(at_console,"preciseattack passes!\n");
 	//	return TRUE;
 		return m_fTurnType == 1 && ( m_fMoveTo == 5 || (m_fMoveTo != 0 && !FStrEq(STRING(m_iszAttack), STRING(m_iszMoveTarget)) ));
+
 	};
 
 	void ReleaseEntity( CBaseMonster *pEntity );

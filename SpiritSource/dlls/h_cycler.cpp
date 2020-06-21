@@ -249,7 +249,7 @@ IMPLEMENT_SAVERESTORE( CCyclerSprite, CBaseEntity );
 
 void CCyclerSprite::Spawn( void )
 {
-	pev->solid			= SOLID_SLIDEBOX;
+	pev->solid		= SOLID_SLIDEBOX;
 	pev->movetype		= MOVETYPE_NONE;
 	pev->takedamage		= DAMAGE_YES;
 	pev->effects		= 0;
@@ -306,83 +306,156 @@ class CWeaponCycler : public CBasePlayerWeapon
 {
 public:
 	void Spawn( void );
-	int iItemSlot( void ) { return 1; }
-	int GetItemInfo(ItemInfo *p) {return 0; }
+	int GetItemInfo(ItemInfo *p);
 
 	void PrimaryAttack( void );
 	void SecondaryAttack( void );
 	BOOL Deploy( void );
-	void Holster( int skiplocal = 0 );
-	int m_iszModel;
-	int m_iModel;
+	void Holster( void );
+	void KeyValue( KeyValueData *pkvd );
+
+	virtual int Save( CSave &save );
+	virtual int Restore( CRestore &restore );
+	static	TYPEDESCRIPTION m_SaveData[];
+private:
+	string_t	m_iPlayerModel;
+	string_t	m_iWorldModel;
+	string_t	m_iViewModel;
 };
 LINK_ENTITY_TO_CLASS( cycler_weapon, CWeaponCycler );
+LINK_ENTITY_TO_CLASS( weapon_question, CWeaponCycler );	// saverestore issues
 
+TYPEDESCRIPTION	CWeaponCycler::m_SaveData[] = 
+{
+	DEFINE_FIELD( CWeaponCycler, m_iPlayerModel, FIELD_MODELNAME ),
+	DEFINE_FIELD( CWeaponCycler, m_iViewModel, FIELD_MODELNAME ),
+	DEFINE_FIELD( CWeaponCycler, m_iWorldModel, FIELD_MODELNAME ),
+}; IMPLEMENT_SAVERESTORE( CWeaponCycler, CBasePlayerWeapon );
 
 void CWeaponCycler::Spawn( )
 {
-	pev->solid			= SOLID_SLIDEBOX;
-	pev->movetype		= MOVETYPE_NONE;
+	// g-cont. this alias need for right slot switching because all selectable items must be preceed with "weapon_" or "item_"
+	pev->classname = MAKE_STRING( "weapon_question" );
+	m_iId = WEAPON_CYCLER;
+	pev->solid = SOLID_SLIDEBOX;
+	pev->movetype = MOVETYPE_NONE;
 
-	PRECACHE_MODEL( (char *)STRING(pev->model) );
-	SET_MODEL( ENT(pev), STRING(pev->model) );
-	m_iszModel = pev->model;
-	m_iModel = pev->modelindex;
+	char basemodel[80], v_path[80], p_path[80], w_path[80];
 
-	UTIL_SetOrigin( this, pev->origin );
-	UTIL_SetSize(pev, Vector(-16, -16, 0), Vector(16, 16, 16));
-	SetTouch(&CWeaponCycler:: DefaultTouch );
+	strncpy( basemodel, (char *)STRING(pev->model), sizeof( basemodel ) - 1 ); 
+
+	for( int i = 0; i < (int)strlen( basemodel ); i++ )
+	{
+		int c = basemodel[i]; 
+
+		if(( c == 'v' || c == 'p' || c == 'w' ) && basemodel[i+1] == '_' )
+		{
+			basemodel[i] = 'v';
+			strcpy( v_path, basemodel );
+			basemodel[i] = 'p';
+			strcpy( p_path, basemodel );
+			basemodel[i] = 'w';
+			strcpy( w_path, basemodel );
+
+			// create wepon model pathes
+			m_iPlayerModel = ALLOC_STRING( p_path );
+			m_iWorldModel = ALLOC_STRING( w_path );
+			m_iViewModel = ALLOC_STRING( v_path );
+			break;
+		}
+	}
+
+	if( m_iPlayerModel && m_iWorldModel && m_iViewModel )
+	{
+		PRECACHE_MODEL( (char *)STRING(m_iPlayerModel) );
+		PRECACHE_MODEL( (char *)STRING(m_iWorldModel) );
+		PRECACHE_MODEL( (char *)STRING(m_iViewModel) );
+
+		// set right world model
+		pev->model = m_iWorldModel;
+
+		SET_MODEL( ENT(pev), STRING(pev->model) );
+	}
+	else
+	{
+		// fallback to default relationship
+		PRECACHE_MODEL( (char *)STRING(pev->model) );
+		SET_MODEL( ENT(pev), STRING(pev->model) );
+
+		// setup viewmodel
+		m_iViewModel = pev->model;
+          }
+	m_iClip = -1;
+	FallInit();
 }
 
+void CWeaponCycler::KeyValue( KeyValueData *pkvd )
+{
+	if (FStrEq(pkvd->szKeyName, "deploy"))
+	{
+		pev->impulse = atoi(pkvd->szValue);
+		pkvd->fHandled = TRUE;
+	}
+	else if (FStrEq(pkvd->szKeyName, "holster"))
+	{
+		pev->button = atoi(pkvd->szValue);
+		pkvd->fHandled = TRUE;
+	}
+	else if (FStrEq(pkvd->szKeyName, "primary"))
+	{
+		pev->sequence = atoi(pkvd->szValue);
+		pkvd->fHandled = TRUE;
+	}
+	else if (FStrEq(pkvd->szKeyName, "secondary"))
+	{
+		pev->team = atoi(pkvd->szValue);
+		pkvd->fHandled = TRUE;
+	}
+	else CBasePlayerWeapon::KeyValue( pkvd );
+}
 
+int CWeaponCycler::GetItemInfo(ItemInfo *p)
+{
+	p->pszName = "weapon_question";	// need for right HUD displaying
+	p->pszAmmo1 = NULL;
+	p->iMaxAmmo1 = -1;
+	p->pszAmmo2 = NULL;
+	p->iMaxAmmo2 = -1;
+	p->iMaxClip = WEAPON_NOCLIP;
+	p->iSlot = 0;
+	p->iPosition = 1;
+	p->iFlags = 0;
+	p->iId = m_iId = WEAPON_CYCLER;
+	p->iWeight = -1;
+
+	return 1;
+}
 
 BOOL CWeaponCycler::Deploy( )
 {
-	m_pPlayer->pev->viewmodel = m_iszModel;
-	m_pPlayer->m_flNextAttack = UTIL_WeaponTimeBase() + 1.0;
-	SendWeaponAnim( 0 );
-	m_iClip = 0;
-	return TRUE;
+	return DefaultDeploy( m_iViewModel, m_iPlayerModel, pev->impulse, "onehanded", 0.5 );
 }
 
-
-void CWeaponCycler::Holster( int skiplocal /* = 0 */ )
+void CWeaponCycler::Holster( )
 {
-	m_pPlayer->m_flNextAttack = UTIL_WeaponTimeBase() + 0.5;
+	m_pPlayer->m_flNextAttack = UTIL_WeaponTimeBase() + 1.0;
+	SendWeaponAnim( pev->button );
 }
-
 
 void CWeaponCycler::PrimaryAttack()
 {
-
 	SendWeaponAnim( pev->sequence );
 
-	m_flNextPrimaryAttack = gpGlobals->time + 0.3;
+	m_flNextPrimaryAttack = gpGlobals->time + 0.5;
 }
 
 
 void CWeaponCycler::SecondaryAttack( void )
 {
-	float flFrameRate, flGroundSpeed;
+	SendWeaponAnim( pev->team );
 
-	pev->sequence = (pev->sequence + 1) % 8;
-
-	pev->modelindex = m_iModel;
-	void *pmodel = GET_MODEL_PTR( ENT(pev) );
-	GetSequenceInfo( pmodel, pev, &flFrameRate, &flGroundSpeed );
-	pev->modelindex = 0;
-
-	if (flFrameRate == 0.0)
-	{
-		pev->sequence = 0;
-	}
-
-	SendWeaponAnim( pev->sequence );
-
-	m_flNextSecondaryAttack = gpGlobals->time + 0.3;
+	m_flNextSecondaryAttack = gpGlobals->time + 0.5;
 }
-
-
 
 // Flaming Wreakage
 class CWreckage : public CBaseMonster

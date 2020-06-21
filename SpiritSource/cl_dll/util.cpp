@@ -131,3 +131,86 @@ HSPRITE LoadSprite(const char *pszName)
 	return SPR_Load(sz);
 }
 
+float TransformColor ( float color )
+{
+	float trns_clr;
+	if(color >= 0 ) trns_clr = color / 255.0f;
+	else trns_clr = 1.0;//default value
+	return trns_clr;
+}
+
+/*
+====================
+Sys LoadGameDLL
+
+====================
+*/
+bool Sys_LoadLibrary (const char* dllname, dllhandle_t* handle, const dllfunction_t *fcts)
+{
+	const dllfunction_t *gamefunc;
+	char dllpath[128];
+	dllhandle_t dllhandle = 0;
+
+	if (handle == NULL) return false;
+
+	// Initializations
+	for (gamefunc = fcts; gamefunc && gamefunc->name != NULL; gamefunc++)
+		*gamefunc->funcvariable = NULL;
+
+	sprintf(dllpath, "%s/cl_dlls/%s", gEngfuncs.pfnGetGameDirectory(), dllname);
+	dllhandle = LoadLibrary (dllpath);
+        
+	// No DLL found
+	if (! dllhandle) return false;
+
+	// Get the function adresses
+	for( gamefunc = fcts; gamefunc && gamefunc->name != NULL; gamefunc++ )
+	{
+		if (!(*gamefunc->funcvariable = (void *) Sys_GetProcAddress (dllhandle, gamefunc->name)))
+		{
+			CONPRINT( "Error: failed to get proc address %s\n", gamefunc->name );
+			Sys_UnloadLibrary (&dllhandle);
+			return false;
+		}
+	}
+          
+	CONPRINT( "%s sucessfully loaded\n", dllname );
+	*handle = dllhandle;
+	return true;
+}
+
+
+void Sys_UnloadLibrary (dllhandle_t* handle)
+{
+	if (handle == NULL || *handle == NULL)
+		return;
+
+	FreeLibrary (*handle);
+	*handle = NULL;
+}
+
+void* Sys_GetProcAddress (dllhandle_t handle, const char* name)
+{
+	return (void *)GetProcAddress (handle, name);
+}
+
+//============
+// UTIL_FileExtension
+// returns file extension
+//============
+const char *UTIL_FileExtension( const char *in )
+{
+	const char *separator, *backslash, *colon, *dot;
+
+	separator = strrchr( in, '/' );
+	backslash = strrchr( in, '\\' );
+	if( !separator || separator < backslash )
+		separator = backslash;
+	colon = strrchr( in, ':' );
+	if( !separator || separator < colon )
+		separator = colon;
+	dot = strrchr( in, '.' );
+	if( dot == NULL || (separator && ( dot < separator )))
+		return "";
+	return dot + 1;
+}

@@ -180,14 +180,15 @@ void CBreakable::Spawn( void )
 		pev->view_ofs = (pev->maxs + pev->mins) / 2;
 	}
 
-	if (m_iszWhenHit) //LRC - locus trigger
+	if( m_iszWhenHit ) //LRC - locus trigger
 	{
 		m_pHitProxy = GetClassPtr( (CPointEntity*)NULL );
+		m_pHitProxy->pev->classname = MAKE_STRING( "info_proxy" );	// allow saverestore
 	}
 
-	pev->solid		= SOLID_BSP;
-    pev->movetype	= MOVETYPE_PUSH;
-    m_angle			= pev->angles.y;
+	pev->solid	= SOLID_BSP;
+	pev->movetype	= MOVETYPE_PUSH;
+	m_angle		= pev->angles.y;
 	pev->angles.y	= 0;
 	m_iInitialHealth = pev->health;
 	m_iInitialRenderAmt = pev->renderamt;
@@ -409,13 +410,6 @@ void CBreakable::Precache( void )
 // play shard sound when func_breakable takes damage.
 // the more damage, the louder the shard sound.
 
-bool CBreakable::CalcNumber(CBaseEntity* plocus, float* OUTresult )
-{
-	*OUTresult = pev->health/m_iInitialHealth;
-	return true;
-}
-
-
 void CBreakable::DamageSound( void )
 {
 	int pitch;
@@ -603,19 +597,10 @@ void CBreakable::RespawnThink( void )
 			}
 		}
 //		ALERT(at_debug,"Respawn OK\n");
-	/*	if (FStrEq("func_pushable",STRING(pev->classname))){	//AJH Fix for respawnable breakable pushables
-			pev->solid = SOLID_BBOX;							//For some reason this code must be executed outside of 
-			pev->origin.z+=1;									//the RespawnThink function. Uses DoRespawn()
-			UTIL_SetOrigin(this,pev->origin);
-		}else{
-			pev->solid = SOLID_BSP;	
-		}
-		*/
-		DoRespawn();	//AJH Fix for respawnable breakable pushables (BY HAWK777)
-		SetUse(&CBreakable:: BreakUse );
+		DoRespawn ();
 		pev->effects &= ~EF_NODRAW;
 		pev->health = m_iInitialHealth;
-		
+		SetUse(&CBreakable:: BreakUse );		
 		if ( !FBitSet( pev->spawnflags, SF_BREAK_TRIGGER_ONLY ) )
 			pev->takedamage	= DAMAGE_YES;
 
@@ -624,10 +609,10 @@ void CBreakable::RespawnThink( void )
 	}
 }
 
-void CBreakable::DoRespawn( void )	//AJH Fix for respawnable breakable pushables (BY HAWK777)
+void CBreakable::DoRespawn( void )
 {
-pev->solid = SOLID_BSP;
-} 
+	pev->solid = SOLID_BSP;
+}
 
 void CBreakable::RespawnFadeThink ( void )
 {
@@ -673,21 +658,8 @@ void CBreakable::TraceAttack( entvars_t *pevAttacker, float flDamage, Vector vec
 	//LRC
 	if (m_iszWhenHit)
 	{
-		if(m_pHitProxy==NULL){		//AJH may need to reset this as it's null after save/load
-			m_pHitProxy = GetClassPtr( (CPointEntity*)NULL );
-		}
-
 		m_pHitProxy->pev->origin = ptr->vecEndPos;
-		if (pev->spawnflags&SF_BREAKABLE_INVERT){	//AJH 
-			vecDir.y=-vecDir.y;
-			//vecDir.z=-vecDir.z;
-			vecDir.x=-vecDir.x;
-			//ALERT(at_debug,"INVERTING Breakables 'hit' vector (x&y components only) \n");
-		}
 		m_pHitProxy->pev->velocity = vecDir;		
-		m_pHitProxy->pev->angles = UTIL_VecToAngles(vecDir);	//AJH
-	
-	  //ALERT(at_debug,"Func_breakable fires %s \n",STRING(m_iszWhenHit));
 		FireTargets( STRING(m_iszWhenHit), m_pHitProxy, this, USE_TOGGLE, 0 );
 	}
 
@@ -932,8 +904,7 @@ void CBreakable::Die( void )
 	if (m_iRespawnTime == -1)
 	{
 //		ALERT(at_debug,"Waiting for respawn trigger\n");
-		SetUse(&CBreakable:: RespawnUse );
-	}
+		SetUse(&CBreakable:: RespawnUse );	}
 	else if (m_iRespawnTime)
 	{
 //		ALERT(at_debug,"Respawning in %d secs\n",m_iRespawnTime);
@@ -996,16 +967,17 @@ public:
 	void	Move( CBaseEntity *pMover, int push );
 	void	KeyValue( KeyValueData *pkvd );
 	void	Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
-	void	DoRespawn(void);	//AJH Fix for respawnable breakable pushables (BY HAWK777)
 	void	EXPORT StopSound( void );
 	//	virtual void	SetActivator( CBaseEntity *pActivator ) { m_pPusher = pActivator; }
+
+	void	DoRespawn( void );
 
 	virtual int	ObjectCaps( void ) { return (CBaseEntity :: ObjectCaps() & ~FCAP_ACROSS_TRANSITION) | FCAP_CONTINUOUS_USE; }
 	virtual int		Save( CSave &save );
 	virtual int		Restore( CRestore &restore );
 
 	inline float MaxSpeed( void ) { return m_maxSpeed; }
-
+	
 	// breakables use an overridden takedamage
 	virtual int TakeDamage( entvars_t* pevInflictor, entvars_t* pevAttacker, float flDamage, int bitsDamageType );
 
@@ -1156,7 +1128,6 @@ void CPushable :: Move( CBaseEntity *pOther, int push )
 	{
 		if ( push && !(pevToucher->button & (IN_FORWARD|IN_USE)) )	// Don't push unless the player is pushing forward and NOT use (pull)
 			return;
-
 		playerTouch = 1;
 	}
 
@@ -1177,41 +1148,19 @@ void CPushable :: Move( CBaseEntity *pOther, int push )
 	else
 		factor = 0.25;
 
-	if (!push)
-		factor = factor*0.5;
+	if (!push) factor = factor*0.5;
 
-	Vector oldVelocity = pev->velocity; //LRC 1.8
 	pev->velocity.x += pevToucher->velocity.x * factor;
 	pev->velocity.y += pevToucher->velocity.y * factor;
-
+	
 	float length = sqrt( pev->velocity.x * pev->velocity.x + pev->velocity.y * pev->velocity.y );
 	if ( push && (length > MaxSpeed()) )
 	{
 		pev->velocity.x = (pev->velocity.x * MaxSpeed() / length );
 		pev->velocity.y = (pev->velocity.y * MaxSpeed() / length );
 	}
-
 	if ( playerTouch )
 	{
-		//LRC 1.8
-		if ( pev->spawnflags & SF_PUSH_NOSUPERPUSH )
-		{
-			// don't accelerate the pushable to be faster than the person pushing it
-			float playerSpeed = pevToucher->velocity.Length2D();
-			Vector playerPushDir = pevToucher->velocity/playerSpeed;
-			playerPushDir.z = 0;
-			float newdot = DotProduct( playerPushDir, pev->velocity ); // how fast we're going with respect to the playerPushDir
-			float olddot = DotProduct( playerPushDir, oldVelocity ); // how fast we used to be going
-			if ( /*olddot <= playerSpeed+0.1f &&*/ newdot > playerSpeed )
-			{
-				// if it wasn't going too fast before, and now it is, adjust to the pusher's actual velocity
-				pev->velocity.x -= playerPushDir.x * newdot;
-				pev->velocity.y -= playerPushDir.y * newdot;
-				pev->velocity.x += pevToucher->velocity.x;
-				pev->velocity.y += pevToucher->velocity.y;
-			}
-		}
-
 		pevToucher->velocity.x = pev->velocity.x;
 		pevToucher->velocity.y = pev->velocity.y;
 		if ( (gpGlobals->time - m_soundTime) > 0.7 )
@@ -1247,7 +1196,8 @@ int CPushable::TakeDamage( entvars_t* pevInflictor, entvars_t* pevAttacker, floa
 	return 1;
 }
 
-void CPushable::DoRespawn(void){	//AJH Fix for respawnable breakable pushables (BY HAWK777)
+void CPushable::DoRespawn( void )
+{
 	pev->solid = SOLID_BBOX;
 	pev->origin.z += 1;
 	UTIL_SetOrigin( this, pev->origin ); 

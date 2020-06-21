@@ -176,11 +176,14 @@ TYPEDESCRIPTION	CCineMonster::m_SaveData[] =
 IMPLEMENT_SAVERESTORE( CCineMonster, CBaseMonster );
 
 LINK_ENTITY_TO_CLASS( scripted_sequence, CCineMonster );
-LINK_ENTITY_TO_CLASS( scripted_action, CCineMonster ); //LRC
+LINK_ENTITY_TO_CLASS( scripted_action, CCineMonster );
 
 LINK_ENTITY_TO_CLASS( aiscripted_sequence, CCineMonster ); //LRC - aiscripted sequences don't need to be seperate
 
-
+//=========================================================
+// FCanOverrideState - returns FALSE, scripted sequences 
+// cannot possess entities regardless of state.
+//=========================================================
 void CCineMonster :: Spawn( void )
 {
 	// pev->solid = SOLID_TRIGGER;
@@ -293,7 +296,7 @@ void CCineMonster :: Touch( CBaseEntity *pOther )
 //
 void CCineMonster :: Die( void )
 {
-	SetThink(&CCineMonster :: SUB_Remove );
+	SetThink( SUB_Remove );
 }
 
 //
@@ -428,20 +431,6 @@ void CCineMonster :: PossessEntity( void )
 			// fall through...
 		case 0: 
 		case 4:
-			//G-Cont. this is a not a better way :(
-			//in my new project this bug will be removed
-			//in Spirit... as is. Sorry about that.
-			//If we interesting - decomment UTIL_AssignOrigin
-			//and run c1a4i with tentacle script - no comments 
-			//UTIL_AssignOrigin( pTarget, pev->origin );
-			pTarget->pev->ideal_yaw = pev->angles.y;
-			pTarget->pev->avelocity = Vector( 0, 0, 0 );
-			pTarget->pev->velocity = Vector( 0, 0, 0 );
-			pTarget->pev->effects |= EF_NOINTERP;
-			pTarget->pev->angles.y = pev->angles.y;
-			pTarget->m_scriptState = SCRIPT_WAIT;
-			//m_startTime = gpGlobals->time + 1E6;
-			break;
 		case 5: 
 		case 6: 
 			pTarget->m_scriptState = SCRIPT_WAIT; 
@@ -463,7 +452,6 @@ void CCineMonster :: PossessEntity( void )
 	}
 
 }
-
 
 // at the beginning of the level, set up the idle animation. --LRC
 void CCineMonster :: InitIdleThink( void )
@@ -577,7 +565,8 @@ void CCineMonster :: SequenceDone ( CBaseMonster *pMonster )
 //=========================================================
 void CCineMonster :: FixScriptMonsterSchedule( CBaseMonster *pMonster )
 {
-	if ( pMonster->m_IdealMonsterState != MONSTERSTATE_DEAD ) pMonster->m_IdealMonsterState = MONSTERSTATE_IDLE;
+	if ( pMonster->m_IdealMonsterState != MONSTERSTATE_DEAD )
+		pMonster->m_IdealMonsterState = MONSTERSTATE_IDLE;
 //	pMonster->ClearSchedule();
 
 	switch ( m_iFinishSchedule )
@@ -652,15 +641,21 @@ void ScriptEntityCancel( edict_t *pentCine )
 	// make sure they are a scripted_sequence
 	if (FClassnameIs( pentCine, "scripted_sequence" ) || FClassnameIs( pentCine, "scripted_action" ))
 	{
-		((CCineMonster *)VARS(pentCine))->m_iState = STATE_OFF;
 		CCineMonster *pCineTarget = GetClassPtr((CCineMonster *)VARS(pentCine));
-		// make sure they have a monster in mind for the script
-		CBaseEntity		*pEntity = pCineTarget->m_hTargetEnt;
-		CBaseMonster	*pTarget = NULL;
-		if ( pEntity )
-			pTarget = pEntity->MyMonsterPointer();
+		CBaseMonster *pTarget = NULL;
+
+		if ( pCineTarget )
+		{
+			pCineTarget->m_iState = STATE_OFF; 
+
+			// make sure they have a monster in mind for the script
+			CBaseEntity *pEntity = pCineTarget->m_hTargetEnt;
+
+			if ( pEntity )
+				pTarget = pEntity->MyMonsterPointer();
+		}
 		
-		if (pTarget)
+		if ( pTarget )
 		{
 			// make sure their monster is actually playing a script
 			if ( pTarget->m_MonsterState == MONSTERSTATE_SCRIPT )
@@ -679,7 +674,7 @@ void ScriptEntityCancel( edict_t *pentCine )
 
 // find all the cinematic entities with my targetname and stop them from playing
 void CCineMonster :: CancelScript( void )
-{	
+{
 	ALERT( at_aiconsole, "Cancelling script: %s\n", STRING(m_iszPlay) );
 	
 	if ( !pev->targetname )
@@ -787,9 +782,11 @@ BOOL CBaseMonster :: CineCleanup( )
 	{
 		// okay, reset me to what it thought I was before
 		m_pCine->m_hTargetEnt = NULL;
+
 		pev->movetype = m_pCine->m_saved_movetype;
-		pev->solid = m_pCine->m_saved_solid;
-		pev->effects = m_pCine->m_saved_effects;
+
+// LRC - why mess around with this? Solidity isn't changed by sequences!
+//		pev->solid = m_pCine->m_saved_solid;
 
 		if (m_pCine->pev->spawnflags & SF_SCRIPT_STAYDEAD)
 			pev->deadflag = DEAD_DYING;

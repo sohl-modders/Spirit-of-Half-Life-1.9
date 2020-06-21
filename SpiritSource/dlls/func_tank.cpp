@@ -331,6 +331,7 @@ void CFuncTank :: Spawn( void )
 	if (m_iszLocusFire) //LRC - locus trigger
 	{
 		m_pFireProxy = GetClassPtr( (CPointEntity*)NULL );
+		m_pFireProxy->pev->classname = MAKE_STRING( "info_proxy" );	// g-cont. allow saverestore
 	}
 }
 
@@ -1643,7 +1644,7 @@ void CFuncTankControls :: Use( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 
 			//LRC - allow tank crosshairs
 			if (m_iCrosshair)
-				m_pController->m_iHideHUD |= ( HIDEHUD_CUSTOMCROSSHAIR | HIDEHUD_WEAPONS );
+				m_pController->m_iHideHUD |= ( HIDEHUD_CROSSHAIR | HIDEHUD_WEAPONS );
 			else
 				m_pController->m_iHideHUD |= HIDEHUD_WEAPONS;
 
@@ -1652,13 +1653,13 @@ void CFuncTankControls :: Use( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 				m_vecControllerUsePos = m_pController->pev->origin - m_pMoveWith->pev->origin;
 			else
 				m_vecControllerUsePos = m_pController->pev->origin;
-			//ALERT( at_console, "TANK controls activated\n");
+			ALERT( at_console, "TANK controls activated\n");
 		}
 	}
 	else if (m_pController && useType != USE_ON)
 	{
 	// player stepped away or died, most likely.
-		//ALERT(at_console, "TANK controls deactivated\n");
+		ALERT(at_console, "TANK controls deactivated\n");
 
 		//LRC- Now uses FindEntityByTargetname, so that aliases work.
 		while (tryTank = UTIL_FindEntityByTargetname(tryTank, STRING(pev->target)))
@@ -1676,7 +1677,7 @@ void CFuncTankControls :: Use( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 		if ( m_pController->m_pActiveItem )
 			m_pController->m_pActiveItem->Deploy();
 
-		m_pController->m_iHideHUD &= ~ (HIDEHUD_CUSTOMCROSSHAIR | HIDEHUD_WEAPONS);
+		m_pController->m_iHideHUD &= ~ (HIDEHUD_CROSSHAIR | HIDEHUD_WEAPONS);
 		m_pController->m_pTank = NULL;				
 
 		m_pController = NULL;

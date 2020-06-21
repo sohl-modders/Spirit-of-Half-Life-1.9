@@ -1,8 +1,15 @@
 /***
 *
-*	Copyright (c) 2005, BUzer.
+*	Copyright (c) 1996-2004, Shambler Team. All rights reserved.
 *	
-*	Used with permission for Spirit of Half-Life 1.5
+*	This product contains software technology licensed from Id 
+*	Software, Inc. ("Id Technology").  Id Technology (c) 1996 Id Software, Inc. 
+*	All Rights Reserved.
+*
+*   Use, distribution, and modification of this source code and/or resulting
+*   object code is restricted to non-commercial enhancements to products from
+*   Shambler Team.  All other use, distribution, or modification is prohibited
+*   without written permission from Shambler Team.
 *
 ****/
 /*
@@ -155,8 +162,7 @@ void ProcessRain( void )
 
 			pmtrace_t pmtrace;
 			gEngfuncs.pEventAPI->EV_SetTraceHull( 2 );
-			gEngfuncs.pEventAPI->EV_PlayerTrace( vecStart, vecEnd, PM_STUDIO_IGNORE, -1, &pmtrace );
-
+                              gEngfuncs.pEventAPI->EV_PlayerTrace( vecStart, vecStart + vecEnd, PM_STUDIO_IGNORE, -1, &pmtrace );
 			if (pmtrace.startsolid)
 			{
 				if (gHUD.RainInfo->value)
@@ -237,7 +243,7 @@ void ProcessRain( void )
 		}
 		else
 		{
-			gEngfuncs.Con_Printf( "Rain error: Drip limit overflow!\n" );
+			//gEngfuncs.Con_Printf( "Rain error: Drip limit overflow!\n" );
 			return;
 		}
 	}

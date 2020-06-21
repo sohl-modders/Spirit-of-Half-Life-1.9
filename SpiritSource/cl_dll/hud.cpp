@@ -29,11 +29,11 @@
 #include "hud_servers.h"
 #include "vgui_int.h"
 #include "vgui_TeamFortressViewport.h"
-#include "mp3.h"
 #include "demo.h"
 #include "demo_api.h"
 #include "vgui_scorepanel.h"
 #include "rain.h"
+#include "com_weapons.h"
 
 class CHLVoiceStatusHelper : public IVoiceStatusHelper
 {
@@ -121,9 +121,6 @@ int __MsgFunc_AddShine(const char *pszName, int iSize, void *pbuf)
 	return 1;
 }
 
-int __MsgFunc_Test(const char *pszName, int iSize, void *pbuf)
-{ return 1; }
-
 //LRC
 int __MsgFunc_SetSky(const char *pszName, int iSize, void *pbuf)
 {
@@ -137,10 +134,29 @@ int __MsgFunc_RainData(const char *pszName, int iSize, void *pbuf)
 	return gHUD.MsgFunc_RainData( pszName, iSize, pbuf );
 }
 
-//LRC 1.8
-int __MsgFunc_ClampView(const char *pszName, int iSize, void *pbuf)
+//change body for weapon models
+int __MsgFunc_SetBody(const char *pszName, int iSize, void *pbuf)
 {
-	gHUD.MsgFunc_ClampView( pszName, iSize, pbuf );
+	gHUD.MsgFunc_SetBody( pszName, iSize, pbuf );
+	return 1;
+}
+
+//change skin for weapon models
+int __MsgFunc_SetSkin(const char *pszName, int iSize, void *pbuf)
+{
+	gHUD.MsgFunc_SetSkin( pszName, iSize, pbuf );
+	return 1;
+}
+
+int __MsgFunc_SetMirror(const char *pszName, int iSize, void *pbuf)
+{
+	gHUD.MsgFunc_SetMirror( pszName, iSize, pbuf );
+	return 1;
+}
+
+int __MsgFunc_ResetMirror(const char *pszName, int iSize, void *pbuf)
+{
+	gHUD.MsgFunc_ResetMirror( pszName, iSize, pbuf );
 	return 1;
 }
 
@@ -182,21 +198,9 @@ int __MsgFunc_GameMode(const char *pszName, int iSize, void *pbuf )
 	return gHUD.MsgFunc_GameMode( pszName, iSize, pbuf );
 }
 
-int __MsgFunc_PlayMP3(const char *pszName, int iSize, void *pbuf )
-{
-	return gHUD.MsgFunc_PlayMP3( pszName, iSize, pbuf );
-}
-
-
 int __MsgFunc_CamData(const char *pszName, int iSize, void *pbuf)
 {
 	gHUD.MsgFunc_CamData( pszName, iSize, pbuf );
-	return 1;
-}
-
-int __MsgFunc_Inventory(const char *pszName, int iSize, void *pbuf)
-{
-	gHUD.MsgFunc_Inventory( pszName, iSize, pbuf );
 	return 1;
 }
 	
@@ -240,11 +244,6 @@ void __CmdFunc_ToggleServerBrowser( void )
 	{
 		gViewPort->ToggleServerBrowser();
 	}
-}
-
-void __CmdFunc_StopMP3( void )
-{
-	gMP3.StopMP3();
 }
 
 // TFFree Command Menu Message Handlers
@@ -363,21 +362,14 @@ void CHud :: Init( void )
 	HOOK_MESSAGE( HUDColor ); //LRC
 	HOOK_MESSAGE( SetFog ); //LRC
 	HOOK_MESSAGE( KeyedDLight ); //LRC
-//	HOOK_MESSAGE( KeyedELight ); //LRC
 	HOOK_MESSAGE( AddShine ); //LRC
-	HOOK_MESSAGE( Test ); //LRC
 	HOOK_MESSAGE( SetSky ); //LRC
 	HOOK_MESSAGE( CamData );//G-Cont. for new camera style 	
 	HOOK_MESSAGE( RainData );//G-Cont. for rain control 
-	HOOK_MESSAGE( Inventory ); //AJH Inventory system
-	HOOK_MESSAGE( ClampView ); //LRC 1.8
-
-	//KILLAR: MP3	
-	if(gMP3.Initialize())
-	{
-		HOOK_MESSAGE( PlayMP3 );
-		HOOK_COMMAND( "stopaudio", StopMP3 );
-	}
+	HOOK_MESSAGE( SetBody );//change body for view weapon model
+	HOOK_MESSAGE( SetSkin );//change skin for view weapon model
+	HOOK_MESSAGE( SetMirror );
+	HOOK_MESSAGE( ResetMirror );
 	
 	// TFFree CommandMenu
 	HOOK_COMMAND( "+commandmenu", OpenCommandMenu );
@@ -407,14 +399,6 @@ void CHud :: Init( void )
 	CVAR_CREATE( "hud_classautokill", "1", FCVAR_ARCHIVE | FCVAR_USERINFO );		// controls whether or not to suicide immediately on TF class switch
 	CVAR_CREATE( "hud_takesshots", "0", FCVAR_ARCHIVE );		// controls whether or not to automatically take screenshots at the end of a round
 
-	//start glow effect --FragBait0
-	CVAR_CREATE("r_glow", "0", FCVAR_ARCHIVE );
-	//CVAR_CREATE("r_glowmode", "0", FCVAR_ARCHIVE ); //AJH this is now redundant
-	CVAR_CREATE("r_glowstrength", "1", FCVAR_ARCHIVE );
-	CVAR_CREATE("r_glowblur", "4", FCVAR_ARCHIVE );
-	CVAR_CREATE("r_glowdark", "2", FCVAR_ARCHIVE );
-	//end glow effect
-
 	viewEntityIndex = 0; // trigger_viewset stuff
 	viewFlags = 0;
 	m_iLogo = 0;
@@ -423,6 +407,7 @@ void CHud :: Init( void )
 	m_iHUDColor = 0x00FFA000; //255,160,0 -- LRC
 	
 	CVAR_CREATE( "zoom_sensitivity_ratio", "1.2", 0 );
+	CVAR_CREATE("r_shadows", "0", FCVAR_ARCHIVE );
 	default_fov = CVAR_CREATE( "default_fov", "90", 0 );
 	m_pCvarStealMouse = CVAR_CREATE( "hud_capturemouse", "1", FCVAR_ARCHIVE );
 	m_pCvarDraw = CVAR_CREATE( "hud_draw", "1", FCVAR_ARCHIVE );
@@ -463,6 +448,7 @@ void CHud :: Init( void )
 	m_StatusIcons.Init();
 	GetClientVoiceMgr()->Init(&g_VoiceStatusHelper, (vgui::Panel**)&gViewPort);
 	m_Particle.Init(); // (LRC) -- 30/08/02 November235: Particles to Order
+	m_Sound.Init();
 
 	m_Menu.Init();
 	InitRain();	
@@ -481,8 +467,9 @@ CHud :: ~CHud()
 	delete [] m_rghSprites;
 	delete [] m_rgrcRects;
 	delete [] m_rgszSpriteNames;
-	gMP3.Shutdown();
+
 	ResetRain();
+
 	//LRC - clear all shiny surfaces
 	if (m_pShinySurface)
 	{
@@ -490,6 +477,8 @@ CHud :: ~CHud()
 		m_pShinySurface = NULL;
 	}
 
+	m_Sound.Close();
+	
 	if ( m_pHudList )
 	{
 		HUDLIST *pList;
@@ -523,7 +512,7 @@ int CHud :: GetSpriteIndex( const char *SpriteName )
 void CHud :: VidInit( void )
 {
 #ifdef ENGINE_DEBUG
-	CONPRINT("## CHud::VidInit (hi from me)\n");
+	CONPRINT("## CHud::VidInit\n");
 #endif
 	m_scrinfo.iSize = sizeof(m_scrinfo);
 	GetScreenInfo(&m_scrinfo);
@@ -617,6 +606,7 @@ void CHud :: VidInit( void )
 
 	m_iFontHeight = m_rgrcRects[m_HUD_number_0].bottom - m_rgrcRects[m_HUD_number_0].top;
 
+	m_Sound.VidInit();
 	m_Ammo.VidInit();
 	m_Health.VidInit();
 	m_Spectator.VidInit();
@@ -757,10 +747,6 @@ int CHud::MsgFunc_SetFOV(const char *pszName,  int iSize, void *pbuf)
 	int newfov = READ_BYTE();
 	int def_fov = CVAR_GET_FLOAT( "default_fov" );
 
-	//Weapon prediction already takes care of changing the fog. ( g_lastFOV ).
-	if ( cl_lw && cl_lw->value )
-		return 1;
-
 	g_lastFOV = newfov;
 
 	if ( newfov == 0 )
@@ -824,5 +810,3 @@ float CHud::GetSensitivity( void )
 {
 	return m_flMouseSensitivity;
 }
-
-

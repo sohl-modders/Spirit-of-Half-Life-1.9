@@ -1,6 +1,8 @@
 // 02/08/02 November235: Particle System
 #pragma once
 
+struct cl_entity_s *GetEntity( int idx );
+
 class ParticleType;
 class ParticleSystem;
 
@@ -19,10 +21,11 @@ struct particle
 	vec3_t origin;
 	vec3_t velocity;
 	vec3_t accel;
+	vec3_t angles;
 	vec3_t m_vecWind;
 
 	int m_iEntIndex; // if non-zero, this particle is tied to the given entity
-
+	
 	float m_fRed;
 	float m_fGreen;
 	float m_fBlue;
@@ -143,17 +146,15 @@ class ParticleSystem
 {
 public:
 	ParticleSystem( int entindex, char *szFilename );//int iParticles );
-//	ParticleSystem( int iParticles );
 	~ParticleSystem( void );
 	void AllocateParticles( int iParticles );
 	void CalculateDistance();
 
-//	ParticleType *GetMainType() { return GetType(m_szMainType); }
 	ParticleType *GetType( const char *szName );
 	ParticleType *AddPlaceholderType( const char *szName );
 	ParticleType *ParseType( char *&szFile );
 
-	cl_entity_t *GetEntity() { return gEngfuncs.GetEntityByIndex(m_iEntIndex); }
+	cl_entity_t *GetEntity() { return ::GetEntity( m_iEntIndex ); }//g-cont. get right index
 
 	static float c_fCosTable[360 + 90];
 	static bool c_bCosTableInit;
@@ -172,7 +173,7 @@ public:
 	void DrawParticle( particle* part, vec3_t &right, vec3_t &up );
 
 	// Utility functions that have to be public
-//	bool ParticleIsVisible( particle* part );
+	bool ParticleIsVisible( particle* part );
 
 	// Pointer to next system for linked list structure	
 	ParticleSystem* m_pNextSystem;
@@ -192,5 +193,6 @@ private:
 	ParticleType *m_pFirstType;
 
 	ParticleType *m_pMainType;
+	vec3_t	angles;
 	//char m_szMainType[MAX_TYPENAME]; // name of the main particle type
 };

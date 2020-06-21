@@ -17,7 +17,7 @@
 //=========================================================
 
 //LRC
-#define GAME_NAME "Spirit of Half-Life 1.8 alpha1"
+#define GAME_NAME "SoHL:CB 1.9 final"
 
 //#include "weapons.h"
 //#include "items.h"

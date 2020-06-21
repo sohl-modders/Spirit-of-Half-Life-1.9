@@ -18,11 +18,11 @@ trigger_changetarget entity.
 #include "util.h"
 #include "cbase.h"
 
-TYPEDESCRIPTION	CBaseMutableAlias::m_SaveData[] = 
+TYPEDESCRIPTION	CBaseAlias::m_SaveData[] = 
 {
-	DEFINE_FIELD( CBaseMutableAlias, m_pNextAlias, FIELD_CLASSPTR ),
+	DEFINE_FIELD( CBaseAlias, m_pNextAlias, FIELD_CLASSPTR ),
 };
-IMPLEMENT_SAVERESTORE( CBaseMutableAlias, CPointEntity );
+IMPLEMENT_SAVERESTORE( CBaseAlias, CPointEntity );
 
 
 /*********************
@@ -38,7 +38,7 @@ IMPLEMENT_SAVERESTORE( CBaseMutableAlias, CPointEntity );
 #define SF_ALIAS_DEBUG 2
 #define MAX_ALIAS_TARGETS 16 //AJH
 
-class CInfoAlias : public CBaseMutableAlias	//AJH Now includes 'listmode' aliasing
+class CInfoAlias : public CBaseAlias	//AJH Now includes 'listmode' aliasing
 {
 public:
 	int		m_cTargets;	//AJH the total number of targets in this alias's fire list.
@@ -70,7 +70,7 @@ TYPEDESCRIPTION	CInfoAlias::m_SaveData[] = //AJH
 	DEFINE_ARRAY( CInfoAlias, m_iTargetName, FIELD_STRING, MAX_ALIAS_TARGETS ),
 //	DEFINE_FIELD( CInfoAlias, m_pNextAlias, FIELD_CLASSPTR ),
 };
-IMPLEMENT_SAVERESTORE( CInfoAlias, CBaseMutableAlias );
+IMPLEMENT_SAVERESTORE( CInfoAlias, CBaseAlias );
 
 void CInfoAlias :: KeyValue( KeyValueData *pkvd ) //AJH
 {
@@ -182,10 +182,8 @@ void CInfoAlias::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE us
 		
 
 		if (pev->spawnflags & SF_ALIAS_DEBUG)
-		{
 			ALERT(at_debug,"DEBUG: info_alias %s  refers to target entity number %d \n",STRING(pev->targetname),m_iTargetName[m_iCurrentTarget]);
 			ALERT(at_debug,"DEBUG: info_alias %s  steps to target %d \n",STRING(pev->targetname),m_iCurrentTarget);
-		}
 		UTIL_AddToAliasList(this);
 	}
 }
@@ -194,13 +192,12 @@ CBaseEntity *CInfoAlias::FollowAlias( CBaseEntity *pFrom )
 {
 	CBaseEntity *pFound = UTIL_FindEntityByTargetname( pFrom, STRING(pev->message) );
 	
-	if (pev->spawnflags & SF_ALIAS_DEBUG) // More excessive debug info
-	{
-		ALERT(at_debug,"DEBUG: info_alias %s  refers to target %d \n",STRING(pev->targetname),m_iCurrentTarget);
-		ALERT(at_debug,"DEBUG: info_alias %s  refers to target entity %s \n",STRING(pev->targetname),STRING(pev->message));
-	
-		if (pFound)
-			ALERT(at_debug,"DEBUG: info_alias %s  refers to target entity %s \n",STRING(pev->targetname),STRING(pFound->pev->targetname));
+	if (pev->spawnflags & SF_ALIAS_DEBUG){ // More excessive debug info
+			ALERT(at_debug,"DEBUG: info_alias %s  refers to target %d \n",STRING(pev->targetname),m_iCurrentTarget);
+			ALERT(at_debug,"DEBUG: info_alias %s  refers to target entity %s \n",STRING(pev->targetname),STRING(pev->message));
+		
+			if (pFound)
+				ALERT(at_debug,"DEBUG: info_alias %s  refers to target entity %s \n",STRING(pev->targetname),STRING(pFound->pev->targetname));
 	}
 	return pFound;
 }
@@ -268,11 +265,11 @@ void CInfoGroup::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE us
 {
 	CBaseEntity *pTarget = UTIL_FindEntityByTargetname( NULL, STRING( pev->target ) );
 
-	if (pTarget && pTarget->IsMutableAlias())
+	if (pTarget && pTarget->IsAlias())
 	{
 		if (pev->spawnflags & SF_GROUP_DEBUG)
 			ALERT(at_debug, "DEBUG: info_group %s changes the contents of %s \"%s\"\n",STRING(pev->targetname), STRING(pTarget->pev->classname), STRING(pTarget->pev->targetname));
-		((CBaseMutableAlias*)pTarget)->ChangeValue(this);
+		((CBaseAlias*)pTarget)->ChangeValue(this);
 	}
 	else if (pev->target)
 	{
@@ -330,7 +327,7 @@ TYPEDESCRIPTION	CMultiAlias::m_SaveData[] =
 	DEFINE_FIELD( CMultiAlias, m_iMode, FIELD_INTEGER ),
 };
 
-IMPLEMENT_SAVERESTORE(CMultiAlias,CBaseMutableAlias);
+IMPLEMENT_SAVERESTORE(CMultiAlias,CBaseAlias);
 
 void CMultiAlias :: KeyValue( KeyValueData *pkvd )
 {
@@ -455,7 +452,7 @@ void CTriggerChangeAlias::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 {
 	CBaseEntity *pTarget = UTIL_FindEntityByTargetname( NULL, STRING( pev->target ), pActivator );
 
-	if (pTarget && pTarget->IsMutableAlias())
+	if (pTarget && pTarget->IsAlias())
 	{
 		CBaseEntity *pValue;
 
@@ -469,9 +466,9 @@ void CTriggerChangeAlias::Use( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 		}
 
 		if (pValue)
-			((CBaseMutableAlias*)pTarget)->ChangeValue(pValue);
+			((CBaseAlias*)pTarget)->ChangeValue(pValue);
 		else
-			((CBaseMutableAlias*)pTarget)->ChangeValue(pev->netname);
+			((CBaseAlias*)pTarget)->ChangeValue(pev->netname);
 	}
 	else
 	{

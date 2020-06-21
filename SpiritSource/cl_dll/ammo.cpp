@@ -304,12 +304,17 @@ void CHudAmmo::Reset(void)
 	m_iFlags |= HUD_ACTIVE; //!!!
 
 	gpActiveSel = NULL;
-	gHUD.m_iHideHUDDisplay = 0;
+	
+	//g-cont. no need anymore
+	//gHUD.m_iHideHUDDisplay = 0;
 
 	gWR.Reset();
 	gHR.Reset();
 
-	//	VidInit();
+
+	static wrect_t nullrc;
+	SetCrosshair( 0, nullrc, 0, 0, 0 );//reset crosshair
+	m_pWeapon = NULL;// reset last weapon
 
 }
 
@@ -424,17 +429,13 @@ void WeaponsResource :: SelectSlot( int iSlot, int fAdvance, int iDirection )
 		return;
 	}
 
-	if ( iSlot > MAX_WEAPON_SLOTS )
-		return;
+	if ( iSlot > MAX_WEAPON_SLOTS ) return;
 
 	if ( gHUD.m_fPlayerDead || gHUD.m_iHideHUDDisplay & ( HIDEHUD_WEAPONS | HIDEHUD_ALL ) )
 		return;
 
-	if (!(gHUD.m_iWeaponBits & (1<<(WEAPON_SUIT)) ))
-		return;
-
-	if ( ! ( gHUD.m_iWeaponBits & ~(1<<(WEAPON_SUIT)) ))
-		return;
+	if (!(gHUD.m_iHideHUDDisplay & ITEM_SUIT )) return;
+	if (!gHUD.m_iWeaponBits) return;
 
 	WEAPON *p = NULL;
 	bool fastSwitch = CVAR_GET_FLOAT( "hud_fastswitch" ) != 0;
@@ -540,7 +541,7 @@ int CHudAmmo::MsgFunc_HideWeapon( const char *pszName, int iSize, void *pbuf )
 	gHUD.m_iHideHUDDisplay = READ_BYTE();
 
 	//LRCT - experiment to allow a custom crosshair.
-	if ( gHUD.m_iHideHUDDisplay & HIDEHUD_CUSTOMCROSSHAIR )
+	if ( gHUD.m_iHideHUDDisplay & HIDEHUD_CROSSHAIR )
 	{
 		WEAPON *pWeapon = gWR.GetWeapon(4);
 		if ( pWeapon )
@@ -622,7 +623,7 @@ int CHudAmmo::MsgFunc_CurWeapon(const char *pszName, int iSize, void *pbuf )
 	m_pWeapon = pWeapon;
 
 	//LRCT - probably not the right way to do this...
-	if ( gHUD.m_iHideHUDDisplay & ( HIDEHUD_CUSTOMCROSSHAIR ))
+	if ( gHUD.m_iHideHUDDisplay & ( HIDEHUD_CROSSHAIR ))
 	{
 		WEAPON *ccWeapon = gWR.GetWeapon(7);
 		SetCrosshair(ccWeapon->hCrosshair, ccWeapon->rcCrosshair, 255, 255, 255);
@@ -853,7 +854,7 @@ int CHudAmmo::Draw(float flTime)
 	int a, x, y, r, g, b;
 	int AmmoWidth;
 
-	if (!(gHUD.m_iWeaponBits & (1<<(WEAPON_SUIT)) ))
+	if (!(gHUD.m_iHideHUDDisplay & ITEM_SUIT ))
 		return 1;
 
 	if ( (gHUD.m_iHideHUDDisplay & ( HIDEHUD_WEAPONS | HIDEHUD_ALL )) )

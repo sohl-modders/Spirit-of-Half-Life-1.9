@@ -19,10 +19,9 @@
 #include "pm_defs.h"
 #include "pmtrace.h"	
 #include "pm_shared.h"
+#include "ev_hldm.h"
 
 #define DLLEXPORT __declspec( dllexport )
-
-void Game_AddObjects( void );
 
 extern vec3_t v_origin;
 
@@ -516,29 +515,14 @@ void DLLEXPORT HUD_CreateEntities( void )
 	// e.g., create a persistent cl_entity_t somewhere.
 	// Load an appropriate model into it ( gEngfuncs.CL_LoadModel )
 	// Call gEngfuncs.CL_CreateVisibleEntity to add it to the visedicts list
-/*
-#if defined( TEST_IT )
-	MoveModel();
-#endif
 
-#if defined( TRACE_TEST )
-	TraceModel();
-#endif
-*/
-/*
-	Particles();
-*/
-/*
-	TempEnts();
-*/
+//	MoveModel();
+//	TraceModel();
+//	Particles();
+//	TempEnts();
+//	Beams();
 
-#if defined( BEAM_TEST )
-	Beams();
-#endif
-
-	// Add in any game specific objects
-	Game_AddObjects();
-
+          EV_UpdateBeams();//egon use this
 	GetClientVoiceMgr()->CreateEntities();
 }
 

@@ -52,6 +52,7 @@ Vector VecBModelOrigin( entvars_t* pevBModel )
 /*QUAKED func_wall (0 .5 .8) ?
 This is just a solid wall if not inhibited
 */
+#define SF_FUNCWALL_ROTATE 1
 
 class CFuncWall : public CBaseEntity
 {
@@ -76,19 +77,7 @@ void CFuncWall :: Spawn( void )
 	if (!m_pMoveWith) //LRC
 		pev->flags |= FL_WORLDBRUSH;
 
-	
-	
-
-	//AJH This allows rotating of func_walls on spawn.
-	//It would be easier to just use pev->angles directly but some old maps might have 'angles' specified already
-	//and we don't want to stuff them up. Therefore we'll make people use the key 'message' in VHE to specify the angle.
-	//pev->angles		= g_vecZero;
-	
-	UTIL_StringToVector((float*)pev->angles, STRING(pev->message));
-
-	if (pev->angles != g_vecZero)
-			ALERT(at_debug,"Rotating brush %s to %i,%i,%i\n",STRING(pev->model),pev->angles.x,pev->angles.y,pev->angles.z);
-
+	pev->angles		= g_vecZero; 
 	pev->movetype	= MOVETYPE_PUSH;  // so it doesn't get pushed by anything
 	pev->solid		= SOLID_BSP;
 	SET_MODEL( ENT(pev), STRING(pev->model) );
@@ -403,9 +392,9 @@ public:
 	float m_pitch;
 	int	  m_sounds;
 
-	EHANDLE m_hActivator; //AJH
+	EHANDLE	m_hActivator;
 
-	float m_fCurSpeed; //LRC - during spin-up and spin-down, this is
+	float	m_fCurSpeed; //LRC - during spin-up and spin-down, this is
 		// the current speed factor (between 0 and 1).
 		// storing this here lets us avoid the hassle of deriving it
 		// from pev->avelocity.
@@ -562,9 +551,7 @@ void CFuncRotating :: Spawn( )
 	//	if (pev->dmg == 0)
 	//		pev->dmg = 2;
 
-	// instant-use brush?
-	//LRC - start immediately if unnamed, too.
-	if ( FBitSet( pev->spawnflags, SF_BRUSH_ROTATE_INSTANT) || FStringNull(pev->targetname) )
+	if ( FBitSet( pev->spawnflags, SF_BRUSH_ROTATE_INSTANT))
 	{		
 		SetThink(&CFuncRotating :: WaitForStart );
 		SetNextThink( 1.5 );	// leave a magic delay for client to start up
@@ -673,7 +660,7 @@ void CFuncRotating :: HurtTouch ( CBaseEntity *pOther )
 //	pev->dmg = pev->avelocity.Length() / 10;
 
 	if (m_hActivator)
-		pOther->TakeDamage( pev, m_hActivator->pev, pev->dmg, DMG_CRUSH );	//AJH Attribute damage to he who switched me.
+		pOther->TakeDamage( pev, m_hActivator->pev, pev->dmg, DMG_CRUSH );
 	else
 		pOther->TakeDamage( pev, pev, pev->dmg, DMG_CRUSH );
 	
@@ -784,7 +771,7 @@ void CFuncRotating :: Rotate( void )
 //=========================================================
 void CFuncRotating :: RotatingUse( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value )
 {
-	m_hActivator = pActivator;	//AJH
+	m_hActivator = pActivator;
 	
 	if (!ShouldToggle(useType)) return;
 
@@ -849,12 +836,21 @@ void CFuncRotating :: RotatingUse( CBaseEntity *pActivator, CBaseEntity *pCaller
 // RotatingBlocked - An entity has blocked the brush
 //
 void CFuncRotating :: Blocked( CBaseEntity *pOther )
-
 {
-	if (m_hActivator)
-		pOther->TakeDamage( pev, m_hActivator->pev, pev->dmg, DMG_CRUSH );	//AJH Attribute damage to he who switched me.
-	else
-		pOther->TakeDamage( pev, pev, pev->dmg, DMG_CRUSH );
+	//g-cont. simple recursive anouncer for parent system
+	//tell parent who blocked his
+	if(!FNullEnt(m_pMoveWith) && m_iLFlags & LF_PARENTMOVE) m_pMoveWith->Blocked( this );
+	if(!FNullEnt(m_pChildMoveWith))
+	{
+		if(m_pChildMoveWith	== pOther)
+		{
+			//ALERT(at_console, "I'am blocked by my child!\n");
+			Use( NULL, NULL, USE_OFF, 0 );
+		}
+	}
+	
+	if (m_hActivator) pOther->TakeDamage( pev, m_hActivator->pev, pev->dmg, DMG_CRUSH );
+	else pOther->TakeDamage( pev, pev, pev->dmg, DMG_CRUSH );
 }
 
 
@@ -892,7 +888,7 @@ public:
 	vec3_t	m_center;
 	vec3_t	m_start;
 
-	EHANDLE m_hActivator;	//AJH (give frags to this entity)
+	EHANDLE m_hActivator;
 };
 
 LINK_ENTITY_TO_CLASS( func_pendulum, CPendulum );
@@ -978,7 +974,7 @@ void CPendulum :: PendulumUse( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 {
 	if (!ShouldToggle(useType)) return;
 
-	m_hActivator = pActivator;	//AJH
+	m_hActivator = pActivator;
 		
 	if ( pev->speed )		// Pendulum is moving, stop it and auto-return if necessary
 	{
@@ -1012,7 +1008,7 @@ void CPendulum :: PendulumUse( CBaseEntity *pActivator, CBaseEntity *pCaller, US
 
 void CPendulum :: StopThink( void )
 {
-	UTIL_SetAngles(this, m_start); //LRC
+	UTIL_AssignAngles(this, m_start); //LRC
 	//pev->angles = m_start;
 	pev->speed = 0;
 	DontThink();
@@ -1023,6 +1019,17 @@ void CPendulum :: StopThink( void )
 
 void CPendulum::Blocked( CBaseEntity *pOther )
 {
+	//g-cont. simple recursive anouncer for parent system
+	//tell parent who blocked his
+	if(!FNullEnt(m_pMoveWith) && m_iLFlags & LF_PARENTMOVE) m_pMoveWith->Blocked( this );
+	if(!FNullEnt(m_pChildMoveWith))
+	{
+		if(m_pChildMoveWith	== pOther)
+		{
+			//ALERT(at_console, "I'am blocked by my child!\n");
+			Use( NULL, NULL, USE_OFF, 0 );
+		}
+	}
 	m_time = gpGlobals->time;
 }
 
@@ -1056,14 +1063,14 @@ void CPendulum :: SwingThink( void )
 	SetThink(&CPendulum ::SwingThink);
 
 //	if (m_pMoveWith) // correct MoveWith problems associated with fast-thinking entities
-//		UTIL_AssignOrigin(this, m_vecMoveWithOffset + m_pMoveWith->pev->origin);
+//		UTIL_AssignOrigin(this, m_vecOffsetOrigin + m_pMoveWith->pev->origin);
 
 	if ( m_damp )
 	{
 		m_dampSpeed -= m_damp * m_dampSpeed * dt;
 		if ( m_dampSpeed < 30.0 )
 		{
-			UTIL_SetAngles(this, m_center); //LRC
+			UTIL_AssignAngles(this, m_center); //LRC
 			//pev->angles = m_center;
 			pev->speed = 0;
 			ALERT(at_debug, "**CANCELLING pendulum think!\n");

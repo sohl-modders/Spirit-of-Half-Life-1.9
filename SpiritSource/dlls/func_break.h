@@ -28,14 +28,13 @@ public:
 	void Spawn( void );
 	void Precache( void );
 	void KeyValue( KeyValueData* pkvd);
-	virtual bool CalcNumber(CBaseEntity *pLocus, float* OUTresult);
 	void EXPORT BreakTouch( CBaseEntity *pOther );
 	void EXPORT BreakUse( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 	void EXPORT RespawnUse( CBaseEntity *pActivator, CBaseEntity *pCaller, USE_TYPE useType, float value );
 	void EXPORT RespawnThink( void );
 	void EXPORT RespawnFadeThink( void );
 	void DamageSound( void );
-	virtual void DoRespawn( void ); //AJH Fix for respawnable breakable pushables
+	virtual void DoRespawn( void );
 	virtual int Classify ( void ) { return m_iClass; }
 
 	// breakables use an overridden takedamage
